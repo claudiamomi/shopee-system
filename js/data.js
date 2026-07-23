@@ -286,6 +286,30 @@ const Cloud = {
   // 手動再抓一次（收信後想立刻看新待確認）
   async refresh() { await this.syncIn(); },
 
+  // ---- 雲端備份 / 還原（後端每次存檔前自動留一份，這裡負責列出與還原）----
+  async listBackups() {
+    if (!this.enabled()) return [];
+    try {
+      const r = await fetch(this.url + '?action=listBackups&t=' + Date.now());
+      const j = await r.json();
+      return (j && j.ok && Array.isArray(j.backups)) ? j.backups : [];
+    } catch (e) { console.warn('列出備份失敗', e); return []; }
+  },
+  async getBackup(id) {
+    const r = await fetch(this.url + '?action=getBackup&id=' + encodeURIComponent(id) + '&t=' + Date.now());
+    const j = await r.json();
+    return (j && j.ok) ? j.data : null;
+  },
+  // 還原：把某份備份覆蓋本機，再推回雲端成為最新版（後端會先把「現在的版本」也備份起來，所以可反悔）。
+  async restoreBackup(id) {
+    const data = await this.getBackup(id);
+    if (!data || !data.商品) throw new Error('讀不到這份備份的內容');
+    DB._overwriteMain(data);
+    this.synced = true;                          // 已用選定版本對齊，允許推雲端
+    await this._post('saveData', DB._mainData());
+    return (data.商品 || []).length;
+  },
+
   // 測試連線
   async test(url) {
     try {

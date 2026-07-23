@@ -38,6 +38,14 @@ const App = {
     });
   },
 
+  // 把 ISO 時間字串轉成好讀的本地時間（給備份清單用）
+  fmtTime(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return iso;
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  },
+
   updateCloudBadge() {
     const el = document.getElementById('cloud-badge');
     if (!el) return;
@@ -732,6 +740,12 @@ const App = {
           <span class="muted" id="cloud-state"></span>
         </div>
       </div>
+      <div class="card">
+        <h2>🛟 從雲端備份還原</h2>
+        <p class="muted" style="margin-bottom:10px">雲端每次存檔前會自動留一份備份。萬一資料被誤蓋，點下面任一版本即可救回——<b>手機也能操作</b>。還原前系統會先把「現在的版本」也備份起來，所以還原後還能反悔。</p>
+        <div class="toolbar" style="margin-bottom:10px"><button class="btn" id="bk-load">🔄 查看雲端備份</button><span class="muted" id="bk-state"></span></div>
+        <div id="bk-list"></div>
+      </div>
       ${typeof CC商品目錄 !== 'undefined' ? `
       <div class="card">
         <h2>📥 匯入 CC 商品目錄</h2>
@@ -774,6 +788,32 @@ const App = {
       Cloud.url = ''; Cloud.status = 'off'; this.updateCloudBadge();
       state.textContent = '已關閉雲端，改用本機資料';
     });
+    // ---- 雲端備份還原 ----
+    const bkState = document.getElementById('bk-state');
+    const bkList = document.getElementById('bk-list');
+    const loadBk = async () => {
+      if (!Cloud.enabled()) { bkState.textContent = '請先設定並連線雲端'; return; }
+      bkState.textContent = '讀取中…'; bkList.innerHTML = '';
+      const list = await Cloud.listBackups();
+      bkState.textContent = '';
+      if (!list.length) { bkList.innerHTML = '<p class="muted">目前沒有備份（後端更新後、下次存檔起才會開始留備份）。</p>'; return; }
+      bkList.innerHTML = `<div class="table-wrap"><table><thead><tr><th>備份時間</th><th>商品</th><th>採購</th><th></th></tr></thead><tbody>${
+        list.map(b => `<tr><td>${this.fmtTime(b.time)}</td><td>${b.商品}</td><td>${b.採購}</td>
+          <td><button class="btn btn-sm bk-restore" data-id="${b.id}" data-t="${this.fmtTime(b.time)}" data-n="${b.商品}">還原這版</button></td></tr>`).join('')
+      }</tbody></table></div>`;
+      bkList.querySelectorAll('.bk-restore').forEach(btn => btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        if (!confirm(`確定還原「${btn.dataset.t}」這一版（${btn.dataset.n} 個商品）？\n現在的版本會先自動備份，還原後仍可反悔。`)) return;
+        btn.textContent = '還原中…'; btn.disabled = true;
+        try {
+          const n = await Cloud.restoreBackup(id);
+          this.updateCloudBadge();
+          alert(`✅ 已還原：${n} 個商品。`);
+          this.go('products');
+        } catch (e) { alert('還原失敗：' + e.message); btn.textContent = '還原這版'; btn.disabled = false; }
+      }));
+    };
+    document.getElementById('bk-load').addEventListener('click', loadBk);
     const catBtn = document.getElementById('d-catalog');
     if (catBtn) catBtn.addEventListener('click', () => {
       if (typeof CC商品目錄 === 'undefined') { alert('目錄檔未載入，請重新整理頁面'); return; }
