@@ -198,11 +198,13 @@ const App = {
   },
 
   /* ================= 採購批次（好運XXXX）================= */
-  // 算一批的總金額（USD）與總進貨成本（NTD，含空運）
+  // 算一批的總金額（USD）、總進貨成本（NTD，含空運），以及 CC/愛屋 兩賣場的總毛利。
+  // 毛利＝用「這批實付單價」當成本、主檔售價當賣價、平日（非活動日）估算；未定價（售價0）不計入。
   batchTotals(batch) {
     const prods = DB.取商品();
+    const 賣場 = DB.取賣場();
     const find = h => prods.find(p => p.貨號 === h);
-    let usd = 0, ntd = 0, 件數 = 0;
+    let usd = 0, ntd = 0, 件數 = 0, 毛利CC = 0, 毛利愛屋 = 0, 未定價 = 0;
     batch.品項.forEach(it => {
       const p = find(it.貨號) || {};
       const 單價 = Number(it.單價USD) || Number(p.進貨USD) || 0;
@@ -210,22 +212,40 @@ const App = {
       usd += 單價 * qty;
       ntd += (單價 * SPEC.匯率 + (Number(p.重量lb)||0) * SPEC.空運費_每磅) * qty;
       件數 += qty;
+      const 售價 = Number(p.售價) || 0;
+      if (售價 > 0) {
+        const 商品 = { 進貨USD: 單價, 重量lb: Number(p.重量lb)||0, 屬性: p.屬性 };
+        if (賣場.CC)   毛利CC   += 算單件(商品, 賣場.CC,   售價, {}).毛利 * qty;
+        if (賣場.愛屋) 毛利愛屋 += 算單件(商品, 賣場.愛屋, 售價, {}).毛利 * qty;
+      } else {
+        未定價 += qty;
+      }
     });
-    return { usd, ntd, 件數, 品項數: batch.品項.length };
+    return { usd, ntd, 件數, 品項數: batch.品項.length, 毛利CC, 毛利愛屋, 未定價 };
   },
 
   renderPurchases() {
     const list = DB.取採購();
-    const rows = list.slice().sort((a,b)=> (b.日期||'').localeCompare(a.日期||'')).map(b => {
+    // 未完成的排前面，各自再依日期新到舊
+    const sorted = list.slice().sort((a,b)=> {
+      const da = a.完成?1:0, db = b.完成?1:0;
+      if (da !== db) return da - db;
+      return (b.日期||'').localeCompare(a.日期||'');
+    });
+    const rows = sorted.map(b => {
       const t = this.batchTotals(b);
-      return `<tr>
-        <td><b>${b.名稱}</b></td>
+      const done = !!b.完成;
+      return `<tr class="${done?'batch-done':''}">
+        <td><input type="checkbox" class="b-chk" data-id="${b.id}"></td>
+        <td><b>${b.名稱}</b>${done?' <span class="pill done">✅ 已完成</span>':''}</td>
         <td class="muted">${b.日期||''}</td>
         <td>${b.來源||''}</td>
         <td class="num">${t.品項數}</td>
         <td class="num">${t.件數}</td>
         <td class="num">$${t.usd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
         <td class="num">${錢(t.ntd)}</td>
+        <td class="num good">${t.毛利CC?錢(t.毛利CC):'<span class="muted">—</span>'}</td>
+        <td class="num good">${t.毛利愛屋?錢(t.毛利愛屋):'<span class="muted">—</span>'}</td>
         <td><div class="row-actions">
           <button class="btn btn-sm" data-open="${b.id}">明細</button>
           <button class="btn btn-sm btn-danger" data-delb="${b.id}">刪</button>
@@ -243,13 +263,17 @@ const App = {
         <p>每一週的進貨批次（對應舊表的「好運XXXX」）。點「明細」看這批買了什麼、各幾件、總成本。</p></div>
       ${pendBanner}
       <div class="card">
-        <div class="toolbar"><div class="spacer"></div>
+        <div class="toolbar">
+          <button class="btn" id="b-merge" disabled>🔗 合併選取</button>
+          <div class="spacer"></div>
           ${Cloud.enabled() ? '<button class="btn" id="b-refresh">🔄 重新整理（收信）</button>' : ''}
           <button class="btn btn-primary" id="b-add">➕ 新增批次</button></div>
         <div class="table-wrap"><table>
-          <thead><tr><th>批次</th><th>日期</th><th>來源訂單</th><th class="num">品項</th>
-            <th class="num">總件數</th><th class="num">總金額USD</th><th class="num">總成本NTD</th><th></th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="8" class="empty">還沒有採購批次</td></tr>`}</tbody>
+          <thead><tr><th style="width:32px"><input type="checkbox" id="b-all" title="全選"></th>
+            <th>批次</th><th>日期</th><th>來源訂單</th><th class="num">品項</th>
+            <th class="num">總件數</th><th class="num">總金額USD</th><th class="num">總成本NTD</th>
+            <th class="num">CC 毛利</th><th class="num">愛屋 毛利</th><th></th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="11" class="empty">還沒有採購批次</td></tr>`}</tbody>
         </table></div>
       </div>`;
   },
@@ -270,6 +294,49 @@ const App = {
         DB.存採購(DB.取採購().filter(x => x.id !== b.dataset.delb));
         this.go('purchases');
       }));
+    // ---- 勾選 / 全選 / 合併 ----
+    const chks = () => [...document.querySelectorAll('.b-chk')];
+    const selected = () => chks().filter(c => c.checked).map(c => c.dataset.id);
+    const allBox = document.getElementById('b-all');
+    const mergeBtn = document.getElementById('b-merge');
+    const refreshMerge = () => {
+      const n = selected().length;
+      mergeBtn.disabled = n < 2;
+      mergeBtn.textContent = n >= 2 ? `🔗 合併選取（${n}）` : '🔗 合併選取';
+    };
+    chks().forEach(c => c.addEventListener('change', refreshMerge));
+    if (allBox) allBox.addEventListener('change', () => {
+      chks().forEach(c => { c.checked = allBox.checked; });
+      refreshMerge();
+    });
+    mergeBtn.addEventListener('click', () => this.mergeBatches(selected()));
+  },
+
+  // 合併多張採購批次成一張：相同貨號＋同單價USD 的品項合併數量（不同價分開列）。
+  mergeBatches(ids) {
+    if (!ids || ids.length < 2) return;
+    const list = DB.取採購();
+    const picked = list.filter(b => ids.includes(b.id));
+    if (picked.length < 2) return;
+    const names = picked.map(b => b.名稱).join('＋');
+    if (!confirm(`確定把這 ${picked.length} 張採購單合併成一張？\n（${names}）\n原本的 ${picked.length} 張會被移除、內容併到新的一張；相同商品同價會合併數量。`)) return;
+    // 合併品項：key = 貨號 + 單價USD
+    const 品項 = [];
+    const idx = {};
+    picked.forEach(b => (b.品項 || []).forEach(it => {
+      const 單價 = Number(it.單價USD) || 0;
+      const key = it.貨號 + '@' + 單價;
+      if (idx[key] != null) 品項[idx[key]].數量 = (Number(品項[idx[key]].數量) || 0) + (Number(it.數量) || 0);
+      else { idx[key] = 品項.length; 品項.push({ 貨號: it.貨號, 數量: Number(it.數量) || 0, 單價USD: 單價 }); }
+    }));
+    const 日期 = picked.map(b => b.日期 || '').sort().slice(-1)[0] || new Date().toISOString().slice(0, 10);
+    const 來源 = [...new Set(picked.map(b => b.來源).filter(Boolean))].join('、');
+    const 追蹤碼 = [...new Set(picked.map(b => b.追蹤碼).filter(Boolean))].join('、');
+    const merged = { id: 'b' + Date.now(), 名稱: '合併：' + names, 日期, 來源, 追蹤碼, 品項, 完成: false };
+    const rest = list.filter(b => !ids.includes(b.id));
+    rest.push(merged);
+    DB.存採購(rest);
+    this.batchDetail(merged.id);
   },
 
   // 批次明細（品項清單 + 加減品項）
@@ -291,13 +358,15 @@ const App = {
     }).join('');
     const prodOpts = prods.map(p=>`<option value="${p.貨號}">${p.貨號}｜${p.品名}</option>`).join('');
     document.getElementById('content').innerHTML = `
-      <div class="page-head"><h1>${batch.名稱}</h1>
+      <div class="page-head"><h1>${batch.名稱}${batch.完成?' <span class="pill done">✅ 已完成</span>':''}</h1>
         <p>${batch.日期||''}　${batch.來源||''}${batch.追蹤碼?'　追蹤 '+batch.追蹤碼:''}</p></div>
       <div class="kpis" style="margin-bottom:18px">
         <div class="kpi"><div class="label">品項數</div><div class="value">${t.品項數}</div></div>
         <div class="kpi"><div class="label">總件數</div><div class="value">${t.件數}</div></div>
         <div class="kpi"><div class="label">總金額 USD</div><div class="value">$${t.usd.toFixed(2)}</div></div>
         <div class="kpi"><div class="label">總成本 NTD</div><div class="value">${錢(t.ntd)}</div><div class="sub">含空運，匯率 ${SPEC.匯率}</div></div>
+        <div class="kpi"><div class="label">CC 總毛利</div><div class="value ${t.毛利CC<0?'bad':'good'}">${錢(t.毛利CC)}</div>${t.未定價?`<div class="sub">${t.未定價} 件未定價未計</div>`:''}</div>
+        <div class="kpi"><div class="label">愛屋 總毛利</div><div class="value ${t.毛利愛屋<0?'bad':'good'}">${錢(t.毛利愛屋)}</div>${t.未定價?`<div class="sub">${t.未定價} 件未定價未計</div>`:''}</div>
       </div>
       <div class="card">
         <h2>➕ 加入品項</h2>
@@ -315,9 +384,15 @@ const App = {
           <tbody>${rows || `<tr><td colspan="6" class="empty">尚無品項</td></tr>`}</tbody>
         </table></div>
       </div>
-      <div class="toolbar"><button class="btn" id="b-back">← 回批次列表</button></div>`;
+      <div class="toolbar"><button class="btn" id="b-back">← 回批次列表</button>
+        <div class="spacer"></div>
+        <button class="btn ${batch.完成?'':'btn-primary'}" id="b-done">${batch.完成?'↩ 取消完成':'✅ 標記採購完成'}</button>
+      </div>`;
 
     document.getElementById('b-back').addEventListener('click',()=>this.go('purchases'));
+    document.getElementById('b-done').addEventListener('click',()=>{
+      batch.完成 = !batch.完成; DB.存採購(list); this.batchDetail(id);
+    });
     document.getElementById('bi-add').addEventListener('click',()=>{
       const 貨號 = document.getElementById('bi-prod').value;
       const 數量 = +document.getElementById('bi-qty').value || 1;

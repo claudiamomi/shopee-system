@@ -160,6 +160,13 @@ td.pname { white-space: normal; word-break: break-word; min-width: 220px; line-h
 .pill.stock { background: #e6f4ea; color: var(--good); }
 .brandtag { display: inline-block; padding: 1px 7px; border-radius: 5px; font-size: 11.5px; font-weight: 700; background: #eef1fb; color: #4a5aa8; vertical-align: middle; }
 .pill.pre { background: #fff0e6; color: var(--shopee); }
+.pill.done { background: #eceff1; color: #607d8b; }
+
+/* 已完成的採購批次：整列反灰 */
+tr.batch-done { background: #f7f8f9; color: #9aa5b1; }
+tr.batch-done:hover { background: #f2f3f5; }
+tr.batch-done b { color: #7b8794; font-weight: 600; }
+tr.batch-done .good, tr.batch-done .bad { color: #9aa5b1 !important; }
 
 .muted { color: var(--ink-soft); font-size: 13px; }
 .right { text-align: right; }
