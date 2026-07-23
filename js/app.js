@@ -517,7 +517,7 @@ const App = {
         <thead><tr>
           <th style="width:32px"><input type="checkbox" id="p-all" title="全選（目前顯示的）"></th>
           <th>貨號</th><th>品名</th>
-          <th class="num">單件成本</th><th class="num">售價</th>
+          <th class="num">進貨USD</th><th class="num">單件成本</th><th class="num">售價</th>
           <th class="num">CC 毛利</th><th class="num">愛屋 毛利</th><th></th>
         </tr></thead>
         <tbody id="p-body"></tbody>
@@ -532,7 +532,7 @@ const App = {
       const rows = list.map((p,i)=>({p,i})).filter(({p}) =>
         (!kw || (p.貨號+p.品名).toLowerCase().includes(kw.toLowerCase())) &&
         (!brand || ((p.品牌||'').trim() || '（未分類）') === brand));
-      if (!rows.length) { body.innerHTML = `<tr><td colspan="8" class="empty">找不到符合的商品</td></tr>`; updateSel(); return; }
+      if (!rows.length) { body.innerHTML = `<tr><td colspan="9" class="empty">找不到符合的商品</td></tr>`; updateSel(); return; }
       body.innerHTML = rows.map(({p,i}) => {
         const 空運費 = (Number(p.重量lb)||0)*SPEC.空運費_每磅;
         const 成本 = (Number(p.進貨USD)||0)*SPEC.匯率 + 空運費;
@@ -547,6 +547,7 @@ const App = {
         return `<tr>
           <td><input type="checkbox" class="p-chk" data-i="${i}"></td>
           <td><b>${p.貨號}</b></td><td class="pname">${brandTag}${p.品名}</td>
+          <td class="num">${p.進貨USD ? '$'+Number(p.進貨USD).toFixed(2) : '<span class="muted">—</span>'}</td>
           <td class="num">${錢(成本)}</td>
           <td class="num">${售價?錢(售價):'<span class="muted">—</span>'}</td>
           ${marginCell('CC')}${marginCell('愛屋')}
