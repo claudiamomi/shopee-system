@@ -116,8 +116,9 @@ const DB = {
     this._write(s);
   },
   _setPendingLocal(list) { const s = this.init(); s.待確認 = list || []; this._write(s); },
-  // 主資料變動後推雲端
-  _pushMain() { if (typeof Cloud !== 'undefined') Cloud.scheduleOut(this._mainData()); },
+  // 某一段資料變動後推雲端（只推這一段，Cloud 會先抓雲端最新、只覆蓋這段，避免蓋掉別段）
+  // section: '商品' | '賣場' | '活動日' | '採購' | 'params'
+  _push(section, value) { if (typeof Cloud !== 'undefined') Cloud.scheduleOut(section, value); },
 
   // 初始化：首次使用（或示範資料版本過舊）灌入預設值
   init() {
@@ -167,13 +168,13 @@ const DB = {
   },
 
   取商品() { return this.init().商品; },
-  存商品(list) { const s = this.init(); s.商品 = list; this._write(s); this._pushMain(); },
+  存商品(list) { const s = this.init(); s.商品 = list; this._write(s); this._push('商品', list); },
 
   取賣場() { return this.init().賣場; },
-  存賣場(obj) { const s = this.init(); s.賣場 = obj; this._write(s); this._pushMain(); },
+  存賣場(obj) { const s = this.init(); s.賣場 = obj; this._write(s); this._push('賣場', obj); },
 
   取活動日() { return this.init().活動日; },
-  存活動日(list) { const s = this.init(); s.活動日 = list; this._write(s); this._pushMain(); },
+  存活動日(list) { const s = this.init(); s.活動日 = list; this._write(s); this._push('活動日', list); },
 
   // 共用參數：美金匯率（浮動，可隨時改）／空運費。改後套進 SPEC、存檔、推雲端。
   取匯率() { return this.init().匯率; },
@@ -182,11 +183,11 @@ const DB = {
     const s = this.init();
     if (obj && Number(obj.匯率) > 0) s.匯率 = Number(obj.匯率);
     if (obj && Number(obj.空運費_每磅) >= 0) s.空運費_每磅 = Number(obj.空運費_每磅);
-    this._applySpec(s); this._write(s); this._pushMain();
+    this._applySpec(s); this._write(s); this._push('params', { 匯率: s.匯率, 空運費_每磅: s.空運費_每磅 });
   },
 
   取採購() { const s = this.init(); return s.採購 || (s.採購 = JSON.parse(JSON.stringify(採購種子)), this._write(s), s.採購); },
-  存採購(list) { const s = this.init(); s.採購 = list; this._write(s); this._pushMain(); },
+  存採購(list) { const s = this.init(); s.採購 = list; this._write(s); this._push('採購', list); },
 
   取待確認() { const s = this.init(); return s.待確認 || (s.待確認 = [], this._write(s), s.待確認); },
   存待確認(list) { const s = this.init(); s.待確認 = list; this._write(s); if (typeof Cloud !== 'undefined') Cloud.setPending(list); },
@@ -249,18 +250,48 @@ const Cloud = {
     this.status = 'error'; this.synced = false;              // 幾次都失敗 → 維持未同步，禁止推雲端
   },
 
-  // 主資料上傳（防抖）
-  scheduleOut(main) {
+  // 分段上傳（防抖）：只記錄「這次改動的段」，flush 時才抓雲端最新、疊上改動段再存回。
+  // section: '商品' | '賣場' | '活動日' | '採購' | 'params'
+  scheduleOut(section, value) {
     if (!this.enabled()) return;
-    // ⭐ 核心防護：這台還沒成功同步過雲端，就絕不推上去（避免空的/舊的蓋掉雲端好資料）。
+    // ⭐ 防護一：這台還沒成功同步過雲端，就絕不推上去（避免空的/舊的蓋掉雲端好資料）。
     if (!this.synced) {
       console.warn('尚未與雲端同步成功，暫不上傳本機變更，避免覆蓋雲端資料。');
       this.status = 'error';
       if (typeof App !== 'undefined' && App.updateCloudBadge) App.updateCloudBadge();
       return;
     }
+    this._pending = this._pending || {};
+    this._pending[section] = value;
     clearTimeout(this._timer);
-    this._timer = setTimeout(() => this._post('saveData', main), 800);
+    this._timer = setTimeout(() => this._flush(), 800);
+  },
+
+  // ⭐ 防護二（分段合併）：抓雲端最新 → 只覆蓋本機這次改動的段 → 存回。
+  // 這樣「只改採購」就不會把雲端的商品售價蓋掉。抓不到雲端就不硬存，稍後重試。
+  async _flush() {
+    if (!this.enabled() || !this.synced) return;
+    const pend = this._pending || {}; this._pending = {};
+    if (!Object.keys(pend).length) return;
+    this.status = 'syncing'; if (typeof App !== 'undefined' && App.updateCloudBadge) App.updateCloudBadge();
+    try {
+      const r = await fetch(this.url + '?t=' + Date.now(), { method: 'GET' });
+      const j = await r.json();
+      if (!(j && j.ok && j.data && j.data.商品)) throw new Error('讀雲端最新失敗');
+      const d = j.data;
+      if (pend.商品) d.商品 = pend.商品;
+      if (pend.賣場) d.賣場 = pend.賣場;
+      if (pend.活動日) d.活動日 = pend.活動日;
+      if (pend.採購) d.採購 = pend.採購;
+      if (pend.params) { d.匯率 = pend.params.匯率; d.空運費_每磅 = pend.params.空運費_每磅; }
+      await this._post('saveData', d);
+    } catch (e) {
+      // 抓不到雲端最新 → 改動放回佇列、稍後重試，絕不用本機整包硬蓋雲端
+      this._pending = Object.assign({}, pend, this._pending || {});
+      this.status = 'error'; if (typeof App !== 'undefined' && App.updateCloudBadge) App.updateCloudBadge();
+      console.warn('分段同步失敗，3 秒後重試', e);
+      clearTimeout(this._timer); this._timer = setTimeout(() => this._flush(), 3000);
+    }
   },
   // 待確認佇列上傳（確認/丟棄後即時寫回雲端）
   setPending(list) {
