@@ -356,7 +356,6 @@ const App = {
         <td class="num">$${(單價*it.數量).toFixed(2)}</td>
         <td><button class="btn btn-sm btn-danger" data-rm="${i}">移除</button></td></tr>`;
     }).join('');
-    const prodOpts = prods.map(p=>`<option value="${p.貨號}">${p.貨號}｜${p.品名}</option>`).join('');
     document.getElementById('content').innerHTML = `
       <div class="page-head"><h1>${batch.名稱}${batch.完成?' <span class="pill done">✅ 已完成</span>':''}</h1>
         <p>${batch.日期||''}　${batch.來源||''}${batch.追蹤碼?'　追蹤 '+batch.追蹤碼:''}</p></div>
@@ -371,7 +370,12 @@ const App = {
       <div class="card">
         <h2>➕ 加入品項</h2>
         <div class="grid grid-3">
-          <div class="field"><label>商品</label><select id="bi-prod">${prodOpts}</select></div>
+          <div class="field" style="position:relative">
+            <label>商品（打貨號或品名搜尋）</label>
+            <input id="bi-search" type="text" placeholder="例：LE019 或 魚油 或 NAC" autocomplete="off">
+            <input type="hidden" id="bi-prod">
+            <div id="bi-results" class="combo-results"></div>
+          </div>
           <div class="field"><label>數量</label><input id="bi-qty" type="number" min="1" value="1"></div>
           <div class="field"><label>單價USD（空白=用主檔成本）</label><input id="bi-price" type="number" min="0" placeholder="留空自動帶"></div>
         </div>
@@ -393,8 +397,42 @@ const App = {
     document.getElementById('b-done').addEventListener('click',()=>{
       batch.完成 = !batch.完成; DB.存採購(list); this.batchDetail(id);
     });
+    // 商品可搜尋欄位（取代長下拉）：打貨號或品名即時篩選，點選帶入
+    const biSearch = document.getElementById('bi-search');
+    const biHidden = document.getElementById('bi-prod');
+    const biResults = document.getElementById('bi-results');
+    const 顯示 = p => (p.貨號 ? p.貨號 + '｜' : '') + (p.品牌 ? p.品牌 + ' ' : '') + p.品名;
+    const drawResults = () => {
+      const kw = biSearch.value.trim().toLowerCase();
+      if (!kw) { biResults.style.display = 'none'; biResults.innerHTML = ''; return; }
+      const hit = prods.filter(p => ((p.貨號||'') + ' ' + (p.品牌||'') + ' ' + (p.品名||'')).toLowerCase().includes(kw)).slice(0, 40);
+      if (!hit.length) { biResults.innerHTML = '<div class="combo-item muted">找不到符合的商品</div>'; biResults.style.display = 'block'; return; }
+      biResults.innerHTML = hit.map(p => `<div class="combo-item" data-code="${p.貨號}" data-name="${(p.品名||'').replace(/"/g,'&quot;')}">${p.貨號?'<b>'+p.貨號+'</b>｜':''}${p.品牌?'<span class="brandtag">'+p.品牌+'</span> ':''}${p.品名}</div>`).join('');
+      biResults.style.display = 'block';
+      biResults.querySelectorAll('.combo-item[data-code]').forEach(el => el.addEventListener('click', () => {
+        biHidden.value = el.dataset.code;
+        biSearch.value = (el.dataset.code ? el.dataset.code + '｜' : '') + el.dataset.name;
+        biResults.style.display = 'none';
+      }));
+    };
+    biSearch.addEventListener('input', () => { biHidden.value = ''; drawResults(); });
+    biSearch.addEventListener('focus', drawResults);
+    document.addEventListener('click', e => { if (e.target !== biSearch && !e.target.closest('#bi-results')) biResults.style.display = 'none'; });
+
     document.getElementById('bi-add').addEventListener('click',()=>{
-      const 貨號 = document.getElementById('bi-prod').value;
+      // 貨號來源：優先已點選的；否則試著用輸入文字比對（貨號｜… 或 純貨號 或 唯一品名）
+      let 貨號 = biHidden.value;
+      if (!貨號) {
+        const v = biSearch.value.trim();
+        if (v.includes('｜')) 貨號 = v.split('｜')[0].trim();
+        else {
+          const byCode = prods.find(p => (p.貨號||'').toLowerCase() === v.toLowerCase());
+          const nameHits = prods.filter(p => (p.品名||'').toLowerCase() === v.toLowerCase());
+          if (byCode) 貨號 = byCode.貨號;
+          else if (nameHits.length === 1) 貨號 = nameHits[0].貨號;
+        }
+      }
+      if (!貨號) { alert('請從搜尋結果點選商品'); biSearch.focus(); return; }
       const 數量 = +document.getElementById('bi-qty').value || 1;
       const priceRaw = document.getElementById('bi-price').value;
       batch.品項.push({ 貨號, 數量, 單價USD: priceRaw===''?0:(+priceRaw||0) });

@@ -168,6 +168,16 @@ tr.batch-done:hover { background: #f2f3f5; }
 tr.batch-done b { color: #7b8794; font-weight: 600; }
 tr.batch-done .good, tr.batch-done .bad { color: #9aa5b1 !important; }
 
+/* 可搜尋商品欄的結果下拉 */
+.combo-results {
+  display: none; position: absolute; left: 0; right: 0; top: 100%; z-index: 40;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: var(--shadow); max-height: 300px; overflow-y: auto; margin-top: 4px;
+}
+.combo-item { padding: 9px 12px; cursor: pointer; font-size: 14px; border-bottom: 1px solid var(--line); }
+.combo-item:last-child { border-bottom: none; }
+.combo-item:hover { background: var(--shopee-light); }
+
 .muted { color: var(--ink-soft); font-size: 13px; }
 .right { text-align: right; }
 .row-actions { display: flex; gap: 6px; }
