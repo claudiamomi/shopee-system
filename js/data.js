@@ -4,11 +4,13 @@
  * ============================================================ */
 
 const SPEC = {
-  匯率: 32.5,
+  匯率: 32.5,          // 執行期即時值，開機時由 DB 狀態覆蓋（見 DB._applySpec）→ 可在「賣場設定」改
   空運費_每磅: 150,
   超長備貨加成: 0.03, // 預購才收
   活動日加成: 0.02,   // 訂單成立日=活動日才收
 };
+// 匯率/空運費的預設值（首次使用或舊資料沒有時用這個；之後以使用者設定為準）
+const 參數預設 = { 匯率: 32.5, 空運費_每磅: 150 };
 
 // 賣場預設參數（可在「賣場設定」頁修改，改後存 localStorage）
 // 類型：'蝦皮'＝套完整蝦皮費用；'簡易'＝毛利=售價−成本−售價×手續費率−固定費
@@ -99,7 +101,7 @@ const DB = {
   _write(state) { localStorage.setItem(this.KEY, JSON.stringify(state)); },
 
   // 主資料（不含待確認）＝雲端 A1 儲存的內容
-  _mainData() { const s = this.init(); return { 商品: s.商品, 賣場: s.賣場, 活動日: s.活動日, 採購: s.採購 }; },
+  _mainData() { const s = this.init(); return { 商品: s.商品, 賣場: s.賣場, 活動日: s.活動日, 採購: s.採購, 匯率: s.匯率, 空運費_每磅: s.空運費_每磅 }; },
   // 雲端拉下來時：覆蓋主資料，但保留本機待確認交由 _setPendingLocal 處理
   _overwriteMain(data) {
     const s = this.init();
@@ -107,7 +109,10 @@ const DB = {
     if (data.賣場) s.賣場 = data.賣場;
     if (data.活動日) s.活動日 = data.活動日;
     if (data.採購) s.採購 = data.採購;
-    this._normalize(s); // 雲端來的舊資料補上 711／類型／品牌等新欄位
+    if (typeof data.匯率 === 'number') s.匯率 = data.匯率;
+    if (typeof data.空運費_每磅 === 'number') s.空運費_每磅 = data.空運費_每磅;
+    this._normalize(s); // 雲端來的舊資料補上 711／類型／品牌／匯率等新欄位
+    this._applySpec(s); // 套用雲端的匯率
     this._write(s);
   },
   _setPendingLocal(list) { const s = this.init(); s.待確認 = list || []; this._write(s); },
@@ -126,12 +131,21 @@ const DB = {
         活動日: 活動日預設.slice(),
         採購: JSON.parse(JSON.stringify(採購種子)),
         待確認: JSON.parse(JSON.stringify(待確認種子)),
+        匯率: 參數預設.匯率,
+        空運費_每磅: 參數預設.空運費_每磅,
       };
       dirty = true;
     }
     if (this._normalize(s)) dirty = true;
+    this._applySpec(s); // 把匯率/空運費套進 SPEC，讓 calc 立即用最新值
     if (dirty) this._write(s);
     return s;
+  },
+
+  // 把狀態裡的匯率/空運費套進 SPEC（執行期即時值）
+  _applySpec(s) {
+    if (typeof s.匯率 === 'number' && s.匯率 > 0) SPEC.匯率 = s.匯率;
+    if (typeof s.空運費_每磅 === 'number' && s.空運費_每磅 >= 0) SPEC.空運費_每磅 = s.空運費_每磅;
   },
 
   // 相容轉換：舊版/雲端資料補上新欄位（不動既有值），確保 711、賣場類型、品牌等存在
@@ -147,6 +161,8 @@ const DB = {
       if (!p.別名) { p.別名 = []; changed = true; }
     });
     if (!s.待確認) { s.待確認 = []; changed = true; }
+    if (typeof s.匯率 !== 'number') { s.匯率 = 參數預設.匯率; changed = true; }            // 舊資料補匯率
+    if (typeof s.空運費_每磅 !== 'number') { s.空運費_每磅 = 參數預設.空運費_每磅; changed = true; }
     return changed;
   },
 
@@ -159,11 +175,30 @@ const DB = {
   取活動日() { return this.init().活動日; },
   存活動日(list) { const s = this.init(); s.活動日 = list; this._write(s); this._pushMain(); },
 
+  // 共用參數：美金匯率（浮動，可隨時改）／空運費。改後套進 SPEC、存檔、推雲端。
+  取匯率() { return this.init().匯率; },
+  取空運費() { return this.init().空運費_每磅; },
+  存參數(obj) {
+    const s = this.init();
+    if (obj && Number(obj.匯率) > 0) s.匯率 = Number(obj.匯率);
+    if (obj && Number(obj.空運費_每磅) >= 0) s.空運費_每磅 = Number(obj.空運費_每磅);
+    this._applySpec(s); this._write(s); this._pushMain();
+  },
+
   取採購() { const s = this.init(); return s.採購 || (s.採購 = JSON.parse(JSON.stringify(採購種子)), this._write(s), s.採購); },
   存採購(list) { const s = this.init(); s.採購 = list; this._write(s); this._pushMain(); },
 
   取待確認() { const s = this.init(); return s.待確認 || (s.待確認 = [], this._write(s), s.待確認); },
   存待確認(list) { const s = this.init(); s.待確認 = list; this._write(s); if (typeof Cloud !== 'undefined') Cloud.setPending(list); },
+
+  // 判斷本機是不是「真實資料」而非剛灌入的預設種子（給雲端初始化上傳當守門員用）。
+  // 商品數與種子不同、或已有採購批次，就當作真實資料。
+  hasRealData() {
+    const s = this.init();
+    if ((s.商品 || []).length !== 商品種子.length) return true;
+    if ((s.採購 || []).length !== 採購種子.length) return true;
+    return false;
+  },
 
   // 匯出 / 匯入（跨裝置搬資料的暫時方案，雲端接上前先用這個）
   匯出() { return JSON.stringify(this.init(), null, 2); },
@@ -178,31 +213,52 @@ const DB = {
 const Cloud = {
   URLKEY: 'shopee_cloud_url',
   status: 'off', // off | ok | error | syncing
+  // ⭐ 安全旗標：只有「這台這次確實從雲端同步成功過」才會是 true。
+  // 沒同步成功前一律禁止把本機資料推上雲端 → 空的/舊的裝置永遠蓋不掉雲端。
+  synced: false,
   _timer: null,
 
   get url() { return localStorage.getItem(this.URLKEY) || ''; },
   set url(v) { v ? localStorage.setItem(this.URLKEY, v.trim()) : localStorage.removeItem(this.URLKEY); },
   enabled() { return !!this.url; },
 
-  // 開機同步：拉主資料覆蓋本機、拉待確認佇列；雲端若空就把本機主資料推上去
-  async syncIn() {
-    if (!this.enabled()) { this.status = 'off'; return; }
+  // 開機同步：拉主資料覆蓋本機、拉待確認佇列；雲端若空且本機有真實資料才初始化上傳。
+  // 冷啟動（Apps Script 睡著）第一次呼叫會慢，故自動重試數次，避免誤判「連線失敗」。
+  async syncIn(retries = 2) {
+    if (!this.enabled()) { this.status = 'off'; this.synced = false; return; }
     this.status = 'syncing';
-    try {
-      const r = await fetch(this.url, { method: 'GET' });
-      const j = await r.json();
-      if (j && j.ok) {
-        if (j.data && j.data.商品) DB._overwriteMain(j.data);
-        else await this._post('saveData', DB._mainData()); // 雲端還沒主資料 → 初始化
-        DB._setPendingLocal(j.pending || []);              // 待確認以雲端為準
-        this.status = 'ok';
-      } else { this.status = 'error'; }
-    } catch (e) { this.status = 'error'; console.warn('雲端拉取失敗', e); }
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const r = await fetch(this.url, { method: 'GET' });
+        const j = await r.json();
+        if (j && j.ok) {
+          if (j.data && j.data.商品) {
+            DB._overwriteMain(j.data);                       // 雲端有資料 → 覆蓋本機
+          } else if (DB.hasRealData()) {
+            await this._post('saveData', DB._mainData());    // 雲端空、但本機是真實資料 → 初始化上傳
+          }
+          // ⚠️ 雲端空且本機只是預設種子 → 什麼都不做（不拿種子去初始化，避免假初始化）
+          DB._setPendingLocal(j.pending || []);              // 待確認以雲端為準
+          this.status = 'ok';
+          this.synced = true;                                // ✅ 這台已與雲端對齊，之後才准推雲端
+          return;
+        }
+      } catch (e) { console.warn(`雲端拉取失敗（第 ${attempt + 1} 次）`, e); }
+      if (attempt < retries) await new Promise(res => setTimeout(res, 1200 * (attempt + 1))); // 遞增等待，喚醒冷啟動
+    }
+    this.status = 'error'; this.synced = false;              // 幾次都失敗 → 維持未同步，禁止推雲端
   },
 
   // 主資料上傳（防抖）
   scheduleOut(main) {
     if (!this.enabled()) return;
+    // ⭐ 核心防護：這台還沒成功同步過雲端，就絕不推上去（避免空的/舊的蓋掉雲端好資料）。
+    if (!this.synced) {
+      console.warn('尚未與雲端同步成功，暫不上傳本機變更，避免覆蓋雲端資料。');
+      this.status = 'error';
+      if (typeof App !== 'undefined' && App.updateCloudBadge) App.updateCloudBadge();
+      return;
+    }
     clearTimeout(this._timer);
     this._timer = setTimeout(() => this._post('saveData', main), 800);
   },

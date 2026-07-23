@@ -11,11 +11,31 @@ const App = {
     this.bindNav();
     const el = document.getElementById('content');
     if (Cloud.enabled()) {
-      el.innerHTML = '<div class="empty">☁️ 雲端同步中…</div>';
+      el.innerHTML = '<div class="empty">☁️ 雲端同步中…<br><span class="muted">（喚醒雲端可能需幾秒，請稍候）</span></div>';
       await Cloud.syncIn();
     }
     this.go('calc');
     this.updateCloudBadge();
+  },
+
+  // 尚未與雲端同步時，頁首顯示的醒目警告（附重試鈕）。同步成功後不出現。
+  syncBannerHTML() {
+    return `<div class="sync-warn" id="sync-warn">
+      ⚠️ <b>尚未與雲端同步</b> — 這台可能連不上雲端。<b>請先不要修改資料</b>，以免把雲端的正確資料蓋掉。
+      <button class="btn btn-primary btn-sm" id="sync-retry">🔄 重試連線</button>
+    </div>`;
+  },
+  maybeShowSyncBanner(view) {
+    if (!(Cloud.enabled() && !Cloud.synced)) return;
+    const el = document.getElementById('content');
+    if (!el || document.getElementById('sync-warn')) return;
+    el.insertAdjacentHTML('afterbegin', this.syncBannerHTML());
+    const rb = document.getElementById('sync-retry');
+    if (rb) rb.addEventListener('click', async () => {
+      rb.textContent = '連線中…'; rb.disabled = true;
+      await Cloud.syncIn(); this.updateCloudBadge();
+      this.go(view); // 重新渲染：成功則橫幅消失
+    });
   },
 
   updateCloudBadge() {
@@ -44,6 +64,7 @@ const App = {
     else if (view === 'products') el.innerHTML = this.renderProducts(), this.afterProducts();
     else if (view === 'stores') el.innerHTML = this.renderStores(), this.afterStores();
     else if (view === 'data') el.innerHTML = this.renderData(), this.afterData();
+    this.maybeShowSyncBanner(view); // 未同步時頁首顯示紅色警告
     window.scrollTo(0, 0);
   },
 
@@ -666,7 +687,12 @@ const App = {
       <div class="page-head"><h1>賣場設定</h1><p>兩個賣場的費率參數。用小數輸入，例如 6% 填 0.06。</p></div>
       ${cards}
       <div class="card">
-        <div class="muted">共用參數：美金匯率 <b>${SPEC.匯率}</b>、空運費 <b>${錢(SPEC.空運費_每磅)}/磅</b>、預購加成 <b>+3%</b>、活動日加成 <b>+2%</b>（活動日共 ${DB.取活動日().length} 天）</div>
+        <h2>🌐 共用參數</h2>
+        <div class="grid grid-2">
+          <div class="field"><label>美金匯率（1 USD = ? NT$，浮動可隨時改）</label><input id="s-匯率" type="number" step="0.01" value="${SPEC.匯率}"></div>
+          <div class="field"><label>空運費（每磅 NT$）</label><input id="s-空運費" type="number" step="1" value="${SPEC.空運費_每磅}"></div>
+        </div>
+        <div class="muted">改匯率後，所有商品的成本與毛利會即時重算。另：預購加成 <b>+3%</b>、活動日加成 <b>+2%</b>（活動日共 ${DB.取活動日().length} 天）。</div>
       </div>
       <div class="toolbar"><button class="btn btn-primary" id="s-save">儲存設定</button></div>`;
   },
@@ -680,7 +706,11 @@ const App = {
           if (el) 賣場[k][f] = +el.value || 0;
         });
       });
-      DB.存賣場(賣場); alert('已儲存'); this.go('stores');
+      DB.存賣場(賣場);
+      // 共用參數：美金匯率／空運費
+      DB.存參數({ 匯率: +document.getElementById('s-匯率').value,
+                  空運費_每磅: +document.getElementById('s-空運費').value });
+      alert('已儲存'); this.go('stores');
     });
   },
 

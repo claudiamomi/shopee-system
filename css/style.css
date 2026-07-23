@@ -126,6 +126,15 @@ input:focus, select:focus { outline: none; border-color: var(--shopee); box-shad
 .btn-danger { color: var(--bad); border-color: #f3c2c2; }
 .btn-danger:hover { background: #fdecec; }
 
+/* ---------- 未同步警告橫幅 ---------- */
+.sync-warn {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+  background: #fdecec; border: 1px solid #f3c2c2; color: var(--bad);
+  border-radius: var(--radius); padding: 12px 16px; margin-bottom: 16px;
+  font-size: 14px; line-height: 1.5;
+}
+.sync-warn .btn { margin-left: auto; }
+
 /* ---------- KPI 數字卡 ---------- */
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 6px; }
 .kpi { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); }
