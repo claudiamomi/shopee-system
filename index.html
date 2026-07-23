@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>蝦皮代購成本系統</title>
+  <link rel="stylesheet" href="css/style.css?v=24">
+</head>
+<body>
+  <div class="app" id="app">
+    <div class="backdrop" id="backdrop"></div>
+
+    <!-- 側邊選單 -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">蝦</div>
+        <div>
+          <div class="title">代購成本系統</div>
+          <div class="subtitle">CC ・ 愛屋</div>
+        </div>
+      </div>
+      <nav class="nav">
+        <a data-view="calc" class="active"><span class="ic">🧮</span>毛利試算機</a>
+        <a data-view="purchases"><span class="ic">🛒</span>採購批次</a>
+        <a data-view="products"><span class="ic">📦</span>商品成本表</a>
+        <a data-view="stores"><span class="ic">🏪</span>賣場設定</a>
+        <a data-view="data"><span class="ic">💾</span>資料備份</a>
+      </nav>
+      <div class="sidebar-foot"><span id="cloud-badge">💾 本機</span><br>build 0723-24</div>
+    </aside>
+
+    <!-- 主區 -->
+    <main class="main">
+      <div class="topbar">
+        <div class="logo">蝦</div>
+        <b>代購成本系統</b>
+        <button class="hamburger" id="hamburger">☰</button>
+      </div>
+      <div class="content" id="content"></div>
+    </main>
+  </div>
+
+  <script src="js/data.js?v=24"></script>
+  <script src="js/calc.js?v=24"></script>
+  <script src="js/le-parser.js?v=24"></script>
+  <script src="js/cc-catalog.js?v=24"></script>
+  <script src="js/app.js?v=24"></script>
+</body>
+</html>

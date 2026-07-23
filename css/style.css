@@ -1,0 +1,188 @@
+/* ============================================================
+ * 蝦皮代購成本系統 — 樣式（響應式，手機/平板/電腦通用）
+ * ============================================================ */
+:root {
+  --shopee: #ee4d2d;
+  --shopee-dark: #d73211;
+  --shopee-light: #fff3f0;
+  --bg: #f5f6f8;
+  --card: #ffffff;
+  --ink: #1f2933;
+  --ink-soft: #52606d;
+  --line: #e4e7eb;
+  --good: #2e7d32;
+  --bad: #c62828;
+  --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --radius: 12px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, "Segoe UI", "Microsoft JhengHei", "PingFang TC", sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- 版面骨架 ---------- */
+.app { display: flex; min-height: 100vh; }
+
+.sidebar {
+  width: 232px;
+  background: #fff;
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  flex-shrink: 0;
+}
+.brand {
+  padding: 20px 20px 16px;
+  display: flex; align-items: center; gap: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.brand .logo {
+  width: 34px; height: 34px; border-radius: 9px;
+  background: var(--shopee); color: #fff;
+  display: grid; place-items: center; font-weight: 800; font-size: 18px;
+}
+.brand .title { font-weight: 700; font-size: 15px; line-height: 1.2; }
+.brand .subtitle { font-size: 11px; color: var(--ink-soft); }
+
+.nav { padding: 10px 8px; flex: 1; }
+.nav a {
+  display: flex; align-items: center; gap: 11px;
+  padding: 11px 14px; margin: 2px 0;
+  border-radius: 9px; color: var(--ink-soft);
+  text-decoration: none; font-weight: 600; font-size: 14px;
+  cursor: pointer; transition: .12s;
+}
+.nav a .ic { width: 20px; text-align: center; font-size: 17px; }
+.nav a:hover { background: var(--bg); color: var(--ink); }
+.nav a.active { background: var(--shopee-light); color: var(--shopee); }
+
+.sidebar-foot { padding: 12px 16px; border-top: 1px solid var(--line); font-size: 11px; color: #9aa5b1; }
+
+/* ---------- 主內容 ---------- */
+.main { flex: 1; min-width: 0; }
+.topbar {
+  display: none;
+  align-items: center; gap: 12px;
+  padding: 12px 16px; background: #fff; border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 20;
+}
+.topbar .logo {
+  width: 30px; height: 30px; border-radius: 8px;
+  background: var(--shopee); color: #fff; display: grid; place-items: center; font-weight: 800;
+}
+.hamburger {
+  margin-left: auto; background: none; border: 1px solid var(--line);
+  border-radius: 8px; padding: 7px 11px; font-size: 17px; cursor: pointer;
+}
+.content { padding: 26px 32px 60px; max-width: 1400px; }
+
+.page-head { margin-bottom: 22px; }
+.page-head h1 { font-size: 23px; font-weight: 800; }
+.page-head p { color: var(--ink-soft); font-size: 14px; margin-top: 4px; }
+
+/* ---------- 卡片 / 元件 ---------- */
+.card {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 20px; margin-bottom: 18px;
+}
+.card h2 { font-size: 16px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+
+.grid { display: grid; gap: 16px; }
+.grid-2 { grid-template-columns: 1fr 1fr; }
+.grid-3 { grid-template-columns: repeat(3, 1fr); }
+.grid-4 { grid-template-columns: repeat(4, 1fr); }
+
+.field { margin-bottom: 14px; }
+.field label { display: block; font-size: 13px; font-weight: 600; color: var(--ink-soft); margin-bottom: 6px; }
+input, select {
+  width: 100%; padding: 10px 12px; font-size: 15px;
+  border: 1px solid var(--line); border-radius: 9px; background: #fff; color: var(--ink);
+  font-family: inherit;
+}
+input:focus, select:focus { outline: none; border-color: var(--shopee); box-shadow: 0 0 0 3px var(--shopee-light); }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 7px; justify-content: center;
+  padding: 10px 18px; border-radius: 9px; border: 1px solid var(--line);
+  background: #fff; color: var(--ink); font-weight: 600; font-size: 14px;
+  cursor: pointer; font-family: inherit; transition: .12s;
+}
+.btn:hover { background: var(--bg); }
+.btn-primary { background: var(--shopee); border-color: var(--shopee); color: #fff; }
+.btn-primary:hover { background: var(--shopee-dark); }
+.btn-ghost { border-color: transparent; background: transparent; color: var(--shopee); }
+.btn-sm { padding: 6px 12px; font-size: 13px; }
+.btn-danger { color: var(--bad); border-color: #f3c2c2; }
+.btn-danger:hover { background: #fdecec; }
+
+/* ---------- KPI 數字卡 ---------- */
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 6px; }
+.kpi { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); }
+.kpi .label { font-size: 12px; color: var(--ink-soft); font-weight: 600; }
+.kpi .value { font-size: 24px; font-weight: 800; margin-top: 6px; }
+.kpi .value.good { color: var(--good); }
+.kpi .value.bad { color: var(--bad); }
+.kpi .sub { font-size: 12px; color: #9aa5b1; margin-top: 2px; }
+
+/* ---------- 表格 ---------- */
+.table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--line); }
+table { width: 100%; border-collapse: collapse; background: #fff; min-width: 640px; }
+th, td { padding: 11px 12px; text-align: left; border-bottom: 1px solid var(--line); font-size: 14px; white-space: nowrap; }
+th { background: #fafbfc; font-weight: 700; color: var(--ink-soft); font-size: 12.5px; position: sticky; top: 0; }
+tbody tr:hover { background: #fcfcfd; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* 品名欄：長名自動換行，避免整張表被撐寬而出現底部左右拉桿 */
+td.pname { white-space: normal; word-break: break-word; min-width: 220px; line-height: 1.35; }
+.good { color: var(--good); }
+.bad { color: var(--bad); }
+
+.pill { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.pill.stock { background: #e6f4ea; color: var(--good); }
+.brandtag { display: inline-block; padding: 1px 7px; border-radius: 5px; font-size: 11.5px; font-weight: 700; background: #eef1fb; color: #4a5aa8; vertical-align: middle; }
+.pill.pre { background: #fff0e6; color: var(--shopee); }
+
+.muted { color: var(--ink-soft); font-size: 13px; }
+.right { text-align: right; }
+.row-actions { display: flex; gap: 6px; }
+.toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+.toolbar .spacer { flex: 1; }
+.search { max-width: 260px; }
+
+.empty { padding: 40px; text-align: center; color: #9aa5b1; }
+tr.need-map td { background: #fff6f5; }
+tr.need-map td:first-child { box-shadow: inset 3px 0 0 var(--shopee); }
+
+.hint { background: var(--shopee-light); border: 1px solid #f9d9cf; color: #8a3b26; padding: 12px 14px; border-radius: 10px; font-size: 13px; margin-bottom: 16px; }
+
+/* ---------- 手機遮罩 ---------- */
+.backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 25; }
+
+/* ---------- 響應式 ---------- */
+@media (max-width: 860px) {
+  .topbar { display: flex; }
+  .sidebar {
+    position: fixed; left: 0; top: 0; z-index: 30;
+    transform: translateX(-100%); transition: transform .22s ease;
+    box-shadow: 2px 0 16px rgba(0,0,0,.12);
+  }
+  .app.nav-open .sidebar { transform: translateX(0); }
+  .app.nav-open .backdrop { display: block; }
+  .content { padding: 18px 16px 60px; }
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .kpis { grid-template-columns: 1fr 1fr; }
+  .page-head h1 { font-size: 20px; }
+}
+@media (max-width: 460px) {
+  .kpis { grid-template-columns: 1fr 1fr; }
+}

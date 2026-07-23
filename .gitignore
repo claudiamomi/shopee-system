@@ -1,0 +1,17 @@
+# ── 不上傳到 GitHub Pages 的檔案（避免成本價、雲端網址外流）──
+# 商品成本目錄（含全部進貨成本／售價，機密）— 只留在本機電腦，平板版從雲端讀資料
+js/cc-catalog.js
+
+# 專案記憶檔（含雲端 Web App 網址，等於可讀寫你雲端資料的鑰匙）
+蝦皮成本系統_專案記憶.md
+
+# 內部開發說明
+CLAUDE.md
+
+# Apps Script 後端與安裝說明（不是網頁的一部分，且說明檔可能含網址）
+AppsScript/
+
+# 系統雜項
+.DS_Store
+Thumbs.db
+desktop.ini
