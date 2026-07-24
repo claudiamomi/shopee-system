@@ -239,7 +239,6 @@ const App = {
       return `<tr class="${done?'batch-done':''}">
         <td><input type="checkbox" class="b-chk" data-id="${b.id}"></td>
         <td><b>${b.名稱}</b>${done?' <span class="pill done">✅ 已完成</span>':''}</td>
-        <td class="muted">${b.日期||''}</td>
         <td>${b.品牌?`<span class="brandtag">${b.品牌}</span> `:''}${b.來源||''}</td>
         <td class="num">${t.品項數}</td>
         <td class="num">${t.件數}</td>
@@ -247,6 +246,7 @@ const App = {
         <td class="num">${錢(t.ntd)}</td>
         <td class="num good">${t.毛利CC?錢(t.毛利CC):'<span class="muted">—</span>'}</td>
         <td class="num good">${t.毛利愛屋?錢(t.毛利愛屋):'<span class="muted">—</span>'}</td>
+        <td class="muted">${b.日期||''}</td>
         <td><div class="row-actions">
           <button class="btn btn-sm" data-open="${b.id}">明細</button>
           <button class="btn btn-sm btn-danger" data-delb="${b.id}">刪</button>
@@ -271,9 +271,9 @@ const App = {
           <button class="btn btn-primary" id="b-add">➕ 新增批次</button></div>
         <div class="table-wrap"><table>
           <thead><tr><th style="width:32px"><input type="checkbox" id="b-all" title="全選"></th>
-            <th>批次</th><th>日期</th><th>來源訂單</th><th class="num">品項</th>
+            <th>批次</th><th>來源訂單</th><th class="num">品項</th>
             <th class="num">總件數</th><th class="num">總金額USD</th><th class="num">總成本NTD</th>
-            <th class="num">CC 毛利</th><th class="num">愛屋 毛利</th><th></th></tr></thead>
+            <th class="num">CC 毛利</th><th class="num">愛屋 毛利</th><th>日期</th><th></th></tr></thead>
           <tbody>${rows || `<tr><td colspan="11" class="empty">還沒有採購批次</td></tr>`}</tbody>
         </table></div>
       </div>`;
