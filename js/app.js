@@ -254,10 +254,16 @@ const App = {
     }).join('');
     const pend = DB.取待確認();
     const pendBanner = pend.length ? `
-      <div class="hint" style="display:flex;align-items:center;gap:12px">
-        <span style="font-size:18px">🔔</span>
-        <div style="flex:1"><b>${pend.length} 筆採購待確認</b>　機器人讀到新的出貨信，核對後即可匯入。</div>
-        <button class="btn btn-primary btn-sm" id="p-review">前往確認</button>
+      <div class="hint">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <span style="font-size:18px">🔔</span>
+          <b>${pend.length} 筆採購待確認</b>　<span class="muted">機器人讀到新的出貨信，點各筆的「確認」核對匯入（順序不限，可先看任一筆）。</span>
+        </div>
+        ${pend.map(p => `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)">
+          <div style="flex:1">📦 <b>${p.建議批次名 || '(未命名)'}</b>　<span class="muted">${p.來源 ? p.來源 + '｜' : ''}${(p.品項 || []).length} 項${p.Order ? '｜Order# ' + p.Order : ''}</span></div>
+          <button class="btn btn-primary btn-sm" data-review="${p.id}">確認</button>
+          <button class="btn btn-danger btn-sm" data-pdiscard="${p.id}">丟棄</button>
+        </div>`).join('')}
       </div>` : '';
     return `
       <div class="page-head"><h1>採購批次</h1>
@@ -279,8 +285,14 @@ const App = {
       </div>`;
   },
   afterPurchases() {
-    const rev = document.getElementById('p-review');
-    if (rev) rev.addEventListener('click', () => this.reviewPending(DB.取待確認()[0].id));
+    document.querySelectorAll('[data-review]').forEach(b =>
+      b.addEventListener('click', () => this.reviewPending(b.dataset.review)));
+    document.querySelectorAll('[data-pdiscard]').forEach(b =>
+      b.addEventListener('click', () => {
+        if (!confirm('確定丟棄這封待確認的信？（不會影響已匯入的批次）')) return;
+        DB.存待確認(DB.取待確認().filter(x => x.id !== b.dataset.pdiscard));
+        this.go('purchases');
+      }));
     const rf = document.getElementById('b-refresh');
     if (rf) rf.addEventListener('click', async () => {
       rf.textContent = '⏳ 收信中…';
