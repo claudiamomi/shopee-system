@@ -368,6 +368,11 @@ const App = {
         <div class="kpi"><div class="label">愛屋 總毛利</div><div class="value ${t.毛利愛屋<0?'bad':'good'}">${錢(t.毛利愛屋)}</div>${t.未定價?`<div class="sub">${t.未定價} 件未定價未計</div>`:''}</div>
       </div>
       <div class="card">
+        <h2>📝 備註</h2>
+        <textarea id="b-note" rows="2" placeholder="記錄這張採購單的事項…（例：已付款、待補運費、客訴…）" style="width:100%;box-sizing:border-box;resize:vertical">${(batch.備註||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea>
+        <div class="muted" id="b-note-status" style="margin-top:4px">　</div>
+      </div>
+      <div class="card">
         <h2>➕ 加入品項</h2>
         <div class="grid grid-3">
           <div class="field" style="position:relative">
@@ -394,6 +399,12 @@ const App = {
       </div>`;
 
     document.getElementById('b-back').addEventListener('click',()=>this.go('purchases'));
+    const noteEl = document.getElementById('b-note');
+    if (noteEl) noteEl.addEventListener('change', () => {                 // 失焦即存，走分段同步上雲端
+      batch.備註 = noteEl.value; DB.存採購(list);
+      const st = document.getElementById('b-note-status');
+      if (st) { st.textContent = '✅ 備註已儲存'; setTimeout(() => { if (st) st.textContent = '　'; }, 2000); }
+    });
     document.getElementById('b-done').addEventListener('click',()=>{
       batch.完成 = !batch.完成; DB.存採購(list); this.batchDetail(id);
     });
@@ -482,7 +493,7 @@ const App = {
     document.getElementById('nb-cancel').addEventListener('click',()=>this.go('purchases'));
     document.getElementById('nb-save').addEventListener('click',()=>{
       const v=id2=>document.getElementById('nb-'+id2).value;
-      const obj={ id:b.id, 名稱:v('名稱').trim(), 日期:v('日期'), 來源:v('來源').trim(), 追蹤碼:v('追蹤碼').trim(), 品項:b.品項||[] };
+      const obj={ ...b, 名稱:v('名稱').trim(), 日期:v('日期'), 來源:v('來源').trim(), 追蹤碼:v('追蹤碼').trim(), 品項:b.品項||[] };  // 展開保留 完成/備註 等既有欄位
       if(!obj.名稱) return alert('請填批次名稱');
       if(id){ const i=list.findIndex(x=>x.id===id); list[i]=obj; } else list.push(obj);
       DB.存採購(list); this.batchDetail(obj.id);
