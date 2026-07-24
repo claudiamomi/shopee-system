@@ -357,7 +357,8 @@ const App = {
         <td><button class="btn btn-sm btn-danger" data-rm="${i}">移除</button></td></tr>`;
     }).join('');
     document.getElementById('content').innerHTML = `
-      <div class="page-head"><h1>${batch.名稱}${batch.完成?' <span class="pill done">✅ 已完成</span>':''}</h1>
+      <div class="page-head"><h1>${batch.名稱}${batch.完成?' <span class="pill done">✅ 已完成</span>':''}
+        <button class="btn btn-sm" id="b-edit" style="vertical-align:middle;font-size:13px">✏️ 編輯</button></h1>
         <p>${batch.日期||''}　${batch.來源||''}${batch.追蹤碼?'　追蹤 '+batch.追蹤碼:''}</p></div>
       <div class="kpis" style="margin-bottom:18px">
         <div class="kpi"><div class="label">品項數</div><div class="value">${t.品項數}</div></div>
@@ -399,6 +400,7 @@ const App = {
       </div>`;
 
     document.getElementById('b-back').addEventListener('click',()=>this.go('purchases'));
+    document.getElementById('b-edit').addEventListener('click',()=>this.editBatch(id));
     const noteEl = document.getElementById('b-note');
     if (noteEl) noteEl.addEventListener('change', () => {                 // 失焦即存，走分段同步上雲端
       batch.備註 = noteEl.value; DB.存採購(list);
@@ -490,7 +492,7 @@ const App = {
           <button class="btn" id="nb-cancel">取消</button>
         </div>
       </div>`;
-    document.getElementById('nb-cancel').addEventListener('click',()=>this.go('purchases'));
+    document.getElementById('nb-cancel').addEventListener('click',()=> id ? this.batchDetail(id) : this.go('purchases'));
     document.getElementById('nb-save').addEventListener('click',()=>{
       const v=id2=>document.getElementById('nb-'+id2).value;
       const obj={ ...b, 名稱:v('名稱').trim(), 日期:v('日期'), 來源:v('來源').trim(), 追蹤碼:v('追蹤碼').trim(), 品項:b.品項||[] };  // 展開保留 完成/備註 等既有欄位
