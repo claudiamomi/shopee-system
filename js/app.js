@@ -360,7 +360,7 @@ const App = {
     document.getElementById('content').innerHTML = `
       <div class="page-head"><h1>${batch.名稱}${batch.完成?' <span class="pill done">✅ 已完成</span>':''}
         <button class="btn btn-sm" id="b-edit" style="vertical-align:middle;font-size:13px">✏️ 編輯</button></h1>
-        <p>${batch.日期||''}　${batch.來源||''}${batch.追蹤碼?'　追蹤 '+batch.追蹤碼:''}</p></div>
+        <p>${batch.日期||''}${batch.品牌?'　<span class="brandtag">'+batch.品牌+'</span>':''}${batch.來源?'　'+batch.來源:''}${batch.追蹤碼?'　追蹤 '+batch.追蹤碼:''}</p></div>
       <div class="kpis" style="margin-bottom:18px">
         <div class="kpi"><div class="label">品項數</div><div class="value">${t.品項數}</div></div>
         <div class="kpi"><div class="label">總件數</div><div class="value">${t.件數}</div></div>
@@ -481,11 +481,22 @@ const App = {
     const list = DB.取採購();
     const b = id ? list.find(x=>x.id===id) : { id:'b'+Date.now(), 名稱:'', 日期:new Date().toISOString().slice(0,10), 來源:'', 追蹤碼:'', 品項:[] };
     const g=(l,v,a)=>`<div class="field"><label>${l}</label><input id="nb-${a}" value="${v||''}"></div>`;
+    // 品牌下拉：內建清單 + 商品用過的品牌 + 目前值 + 其他自訂
+    const brandList = 品牌選項.slice();
+    DB.取商品().forEach(p => { if (p.品牌 && brandList.indexOf(p.品牌) < 0) brandList.push(p.品牌); });
+    if (b.品牌 && brandList.indexOf(b.品牌) < 0) brandList.unshift(b.品牌);
+    const brandOpts = brandList.map(x => `<option ${b.品牌===x?'selected':''}>${x}</option>`).join('');
     document.getElementById('content').innerHTML = `
       <div class="page-head"><h1>${id?'編輯批次':'新增採購批次'}</h1></div>
       <div class="card" style="max-width:560px">
         ${g('批次名稱（如 好運0727）', b.名稱, '名稱')}
         <div class="field"><label>採購日期</label><input id="nb-日期" type="date" value="${b.日期||''}"></div>
+        <div class="field"><label>品牌</label>
+          <select id="nb-品牌">
+            <option value="">— 選擇品牌 —</option>
+            ${brandOpts}
+            <option value="__new__">➕ 其他（自訂）</option>
+          </select></div>
         ${g('來源訂單（品牌／Order#）', b.來源, '來源')}
         ${g('追蹤碼（選填）', b.追蹤碼, '追蹤碼')}
         <div class="toolbar" style="margin-top:8px">
@@ -493,10 +504,20 @@ const App = {
           <button class="btn" id="nb-cancel">取消</button>
         </div>
       </div>`;
+    const brandSel = document.getElementById('nb-品牌');
+    brandSel.addEventListener('change', () => {                        // 選「其他」→ 即時輸入自訂品牌
+      if (brandSel.value === '__new__') {
+        const nb = (prompt('輸入品牌名稱：') || '').trim();
+        if (!nb) { brandSel.value = ''; return; }
+        const o = document.createElement('option'); o.value = nb; o.textContent = nb; o.selected = true;
+        brandSel.insertBefore(o, brandSel.firstChild);
+      }
+    });
     document.getElementById('nb-cancel').addEventListener('click',()=> id ? this.batchDetail(id) : this.go('purchases'));
     document.getElementById('nb-save').addEventListener('click',()=>{
       const v=id2=>document.getElementById('nb-'+id2).value;
-      const obj={ ...b, 名稱:v('名稱').trim(), 日期:v('日期'), 來源:v('來源').trim(), 追蹤碼:v('追蹤碼').trim(), 品項:b.品項||[] };  // 展開保留 完成/備註 等既有欄位
+      const 品牌 = brandSel.value === '__new__' ? '' : brandSel.value;
+      const obj={ ...b, 名稱:v('名稱').trim(), 日期:v('日期'), 品牌, 來源:v('來源').trim(), 追蹤碼:v('追蹤碼').trim(), 品項:b.品項||[] };  // 展開保留 完成/備註 等既有欄位
       if(!obj.名稱) return alert('請填批次名稱');
       if(id){ const i=list.findIndex(x=>x.id===id); list[i]=obj; } else list.push(obj);
       DB.存採購(list); this.batchDetail(obj.id);
