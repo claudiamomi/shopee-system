@@ -543,7 +543,8 @@ const App = {
     if (!P) return this.go('purchases');
     const matched = matchLEItems(P, DB.取商品());
     const prods = DB.取商品();
-    const opts = prods.map(p => `<option value="${p.貨號}">${p.貨號}｜${p.品名}</option>`).join('');
+    // 原生 datalist 選項（打貨號或品名即時篩選、清單原生彈出不會被表格裁切）
+    const datalistOpts = prods.filter(p => p.貨號).map(p => `<option value="${p.貨號}｜${p.品牌 ? p.品牌 + ' ' : ''}${p.品名}"></option>`).join('');
 
     const rows = matched.map((it, i) => {
       const 小計 = (it.單價USD * it.數量).toFixed(2);
@@ -552,12 +553,12 @@ const App = {
         對應欄 = `<span class="pill stock">✅ ${it.貨號}</span>
           <input type="hidden" class="map" data-i="${i}" value="${it.貨號}">`;
       } else {
-        對應欄 = `<select class="map" data-i="${i}" style="min-width:180px">
-            <option value="">— 請選對應商品 —</option>
-            ${opts}
-            <option value="__new__">➕ 建立新商品（用信上資料）</option>
-            <option value="__skip__">✖ 此項不匯入</option>
-          </select>`;
+        對應欄 = `<div class="rv-pick">
+            <input type="text" class="rv-search" data-i="${i}" list="rv-prodlist" placeholder="打貨號/品名搜尋…" autocomplete="off">
+            <input type="hidden" class="map" data-i="${i}" value="">
+            <button type="button" class="btn btn-sm rv-new" data-i="${i}" title="建立新商品">➕新品</button>
+            <button type="button" class="btn btn-sm rv-skip" data-i="${i}" title="此項不匯入">✖</button>
+          </div>`;
       }
       return `<tr class="${it.已對應?'':'need-map'}">
         <td>${it.品名}</td>
@@ -587,6 +588,7 @@ const App = {
           <thead><tr><th>LE 品名</th><th>Item#</th><th class="num">數量</th><th class="num">單價USD</th><th class="num">小計</th><th>對應你的貨號</th></tr></thead>
           <tbody>${rows}</tbody>
         </table></div>
+        <datalist id="rv-prodlist">${datalistOpts}</datalist>
       </div>
       <div class="toolbar">
         <button class="btn btn-primary" id="rv-confirm">✅ 確認匯入成採購批次</button>
@@ -595,21 +597,41 @@ const App = {
         <button class="btn btn-danger" id="rv-discard">丟棄這封信</button>
       </div>`;
 
-    // 「建立新商品」需要一個貨號：即時 prompt 一次，存回 select
-    document.querySelectorAll('select.map').forEach(sel => {
-      sel.addEventListener('change', () => {
-        if (sel.value === '__new__') {
-          const it = matched[+sel.dataset.i];
-          const 貨號 = (prompt(`為「${it.品名}」設定你的貨號（例：LE123）：`) || '').trim();
-          if (!貨號) { sel.value = ''; return; }
-          sel.dataset.new貨號 = 貨號;
-          // 動態加一個 option 顯示
-          const o = document.createElement('option');
-          o.value = '__new__'; o.textContent = `➕ 新商品：${貨號}`; o.selected = true;
-          sel.appendChild(o);
+    // 對應貨號：改用可搜尋輸入（datalist）＋「新品/不匯入」按鈕
+    const hiddenOf = i => document.querySelector(`input.map[data-i="${i}"]`);
+    const searchOf = i => document.querySelector(`input.rv-search[data-i="${i}"]`);
+    // 打字/選取後把輸入值解析成貨號，存回隱藏的 .map
+    document.querySelectorAll('.rv-search').forEach(inp => {
+      const resolve = () => {
+        const h = hiddenOf(inp.dataset.i);
+        const v = inp.value.trim();
+        let 貨號 = '';
+        if (v.includes('｜')) 貨號 = v.split('｜')[0].trim();               // 從清單選的 "貨號｜品名"
+        else if (v) {                                                       // 直接打貨號、或唯一品名
+          const byCode = prods.find(p => (p.貨號 || '').toLowerCase() === v.toLowerCase());
+          const nameHit = prods.filter(p => (p.品名 || '').toLowerCase() === v.toLowerCase());
+          if (byCode) 貨號 = byCode.貨號; else if (nameHit.length === 1) 貨號 = nameHit[0].貨號;
         }
-      });
+        h.value = 貨號; delete h.dataset.new貨號;
+        inp.classList.toggle('chosen', !!貨號);
+      };
+      inp.addEventListener('change', resolve);
+      inp.addEventListener('input', resolve);
     });
+    // ➕新品：prompt 一個貨號
+    document.querySelectorAll('.rv-new').forEach(btn => btn.addEventListener('click', () => {
+      const i = btn.dataset.i, it = matched[+i], h = hiddenOf(i), s = searchOf(i);
+      const 貨號 = (prompt(`為「${it.品名}」設定你的貨號（例：LE123）：`) || '').trim();
+      if (!貨號) return;
+      h.value = '__new__'; h.dataset.new貨號 = 貨號;
+      s.value = `➕ 新商品：${貨號}`; s.classList.add('chosen');
+    }));
+    // ✖不匯入
+    document.querySelectorAll('.rv-skip').forEach(btn => btn.addEventListener('click', () => {
+      const i = btn.dataset.i, h = hiddenOf(i), s = searchOf(i);
+      h.value = '__skip__'; delete h.dataset.new貨號;
+      s.value = '✖ 此項不匯入'; s.classList.remove('chosen');
+    }));
 
     document.getElementById('rv-cancel').addEventListener('click', () => this.go('purchases'));
     document.getElementById('rv-discard').addEventListener('click', () => {

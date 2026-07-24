@@ -177,6 +177,12 @@ tr.batch-done .good, tr.batch-done .bad { color: #9aa5b1 !important; }
 .combo-item { padding: 9px 12px; cursor: pointer; font-size: 14px; border-bottom: 1px solid var(--line); }
 .combo-item:last-child { border-bottom: none; }
 .combo-item:hover { background: var(--shopee-light); }
+
+/* 確認採購頁「對應貨號」可搜尋輸入 */
+.rv-pick { display: flex; gap: 6px; align-items: center; min-width: 240px; }
+.rv-pick .rv-search { flex: 1; min-width: 120px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; }
+.rv-pick .rv-search:focus { outline: none; border-color: var(--shopee); }
+.rv-pick .rv-search.chosen { background: #e6f4ea; border-color: var(--good); }
 .combo-item.active { background: var(--shopee-light); box-shadow: inset 3px 0 0 var(--shopee); }
 
 .muted { color: var(--ink-soft); font-size: 13px; }
