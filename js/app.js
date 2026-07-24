@@ -215,8 +215,9 @@ const App = {
       const 售價 = Number(p.售價) || 0;
       if (售價 > 0) {
         const 商品 = { 進貨USD: 單價, 重量lb: Number(p.重量lb)||0, 屬性: p.屬性 };
-        if (賣場.CC)   毛利CC   += 算單件(商品, 賣場.CC,   售價, {}).毛利 * qty;
-        if (賣場.愛屋) 毛利愛屋 += 算單件(商品, 賣場.愛屋, 售價, {}).毛利 * qty;
+        // 每品項扣一次該賣場固定費（CC $60／愛屋 $0），不隨數量倍增
+        if (賣場.CC)   毛利CC   += 算單件(商品, 賣場.CC,   售價, {}).毛利 * qty - (Number(賣場.CC.固定費)   || 0);
+        if (賣場.愛屋) 毛利愛屋 += 算單件(商品, 賣場.愛屋, 售價, {}).毛利 * qty - (Number(賣場.愛屋.固定費) || 0);
       } else {
         未定價 += qty;
       }
@@ -365,7 +366,7 @@ const App = {
         <div class="kpi"><div class="label">總件數</div><div class="value">${t.件數}</div></div>
         <div class="kpi"><div class="label">總金額 USD</div><div class="value">$${t.usd.toFixed(2)}</div></div>
         <div class="kpi"><div class="label">總成本 NTD</div><div class="value">${錢(t.ntd)}</div><div class="sub">含空運，匯率 ${SPEC.匯率}</div></div>
-        <div class="kpi"><div class="label">CC 總毛利</div><div class="value ${t.毛利CC<0?'bad':'good'}">${錢(t.毛利CC)}</div>${t.未定價?`<div class="sub">${t.未定價} 件未定價未計</div>`:''}</div>
+        <div class="kpi"><div class="label">CC 總毛利</div><div class="value ${t.毛利CC<0?'bad':'good'}">${錢(t.毛利CC)}</div><div class="sub">已扣 $60/品項${t.未定價?`；${t.未定價} 件未定價未計`:''}</div></div>
         <div class="kpi"><div class="label">愛屋 總毛利</div><div class="value ${t.毛利愛屋<0?'bad':'good'}">${錢(t.毛利愛屋)}</div>${t.未定價?`<div class="sub">${t.未定價} 件未定價未計</div>`:''}</div>
       </div>
       <div class="card">
@@ -684,7 +685,7 @@ const App = {
         const 售價 = Number(p.售價)||0;
         const marginCell = (storeKey) => {
           if (!售價) return '<td class="num"><span class="muted">—</span></td>';
-          const m = 算單件(p, 賣場[storeKey], 售價, {}).毛利;
+          const m = 算單件(p, 賣場[storeKey], 售價, {}).毛利 - (Number(賣場[storeKey].固定費) || 0); // 每件扣一次該賣場固定費（CC $60）
           const cls = m < 200 ? 'bad' : 'good'; // 毛利低於 200 反紅（含賠錢）
           return `<td class="num ${cls}"><b>${錢(m)}</b></td>`;
         };
