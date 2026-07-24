@@ -240,7 +240,7 @@ const App = {
         <td><input type="checkbox" class="b-chk" data-id="${b.id}"></td>
         <td><b>${b.名稱}</b>${done?' <span class="pill done">✅ 已完成</span>':''}</td>
         <td class="muted">${b.日期||''}</td>
-        <td>${b.來源||''}</td>
+        <td>${b.品牌?`<span class="brandtag">${b.品牌}</span> `:''}${b.來源||''}</td>
         <td class="num">${t.品項數}</td>
         <td class="num">${t.件數}</td>
         <td class="num">$${t.usd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
