@@ -22,8 +22,9 @@ function parseLEShipping(text) {
   const ship = text.match(/Shipping Method:\*?\s*\n+\s*([A-Za-z ]+)/);
   if (ship) out.運送方式 = ship[1].trim();
 
-  // 品項：以「*品名* … Item: … UPC: … $單價 | Qty: 數量」為錨點
-  const re = /\*([^*\n]+)\*\s*\n\s*Item:\s*(\d+)\s*\n\s*UPC:\s*(\d+)\s*\n\s*\$([\d.,]+)\s*\|\s*Qty:\s*(\d+)/g;
+  // 品項：以「品名 … Item: … UPC: … $單價 | Qty: 數量」為錨點
+  // 相容轉寄信（品名/金額外包 *星號*、$緊接數字）與原始直寄信（品名無星號、"$ 6.75" $後有空格、段間空行）
+  const re = /(?:^|\n)[ \t]*\*?[ \t]*([^\s*][^\n]*?)[ \t]*\*?[ \t]*\n\s*Item:\s*(\d+)\s*\n\s*UPC:\s*(\d+)\s*\n\s*\*?\$\s*([\d.,]+)\s*\|\s*Qty:\s*(\d+)/g;
   let m;
   while ((m = re.exec(text)) !== null) {
     out.品項.push({

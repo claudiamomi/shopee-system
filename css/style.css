@@ -177,6 +177,7 @@ tr.batch-done .good, tr.batch-done .bad { color: #9aa5b1 !important; }
 .combo-item { padding: 9px 12px; cursor: pointer; font-size: 14px; border-bottom: 1px solid var(--line); }
 .combo-item:last-child { border-bottom: none; }
 .combo-item:hover { background: var(--shopee-light); }
+.combo-item.active { background: var(--shopee-light); box-shadow: inset 3px 0 0 var(--shopee); }
 
 .muted { color: var(--ink-soft); font-size: 13px; }
 .right { text-align: right; }

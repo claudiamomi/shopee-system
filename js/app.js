@@ -402,21 +402,40 @@ const App = {
     const biHidden = document.getElementById('bi-prod');
     const biResults = document.getElementById('bi-results');
     const 顯示 = p => (p.貨號 ? p.貨號 + '｜' : '') + (p.品牌 ? p.品牌 + ' ' : '') + p.品名;
+    let activeIdx = -1;
+    const items = () => [...biResults.querySelectorAll('.combo-item[data-code]')];
+    const choose = el => {
+      biHidden.value = el.dataset.code;
+      biSearch.value = (el.dataset.code ? el.dataset.code + '｜' : '') + el.dataset.name;
+      biResults.style.display = 'none';
+      activeIdx = -1;
+    };
+    const setActive = i => {
+      const els = items(); if (!els.length) return;
+      activeIdx = (i + els.length) % els.length;                       // 環狀：到底回頭、到頂回尾
+      els.forEach((el, k) => el.classList.toggle('active', k === activeIdx));
+      els[activeIdx].scrollIntoView({ block: 'nearest' });
+    };
     const drawResults = () => {
       const kw = biSearch.value.trim().toLowerCase();
-      if (!kw) { biResults.style.display = 'none'; biResults.innerHTML = ''; return; }
+      if (!kw) { biResults.style.display = 'none'; biResults.innerHTML = ''; activeIdx = -1; return; }
       const hit = prods.filter(p => ((p.貨號||'') + ' ' + (p.品牌||'') + ' ' + (p.品名||'')).toLowerCase().includes(kw)).slice(0, 40);
-      if (!hit.length) { biResults.innerHTML = '<div class="combo-item muted">找不到符合的商品</div>'; biResults.style.display = 'block'; return; }
+      if (!hit.length) { biResults.innerHTML = '<div class="combo-item muted">找不到符合的商品</div>'; biResults.style.display = 'block'; activeIdx = -1; return; }
       biResults.innerHTML = hit.map(p => `<div class="combo-item" data-code="${p.貨號}" data-name="${(p.品名||'').replace(/"/g,'&quot;')}">${p.貨號?'<b>'+p.貨號+'</b>｜':''}${p.品牌?'<span class="brandtag">'+p.品牌+'</span> ':''}${p.品名}</div>`).join('');
       biResults.style.display = 'block';
-      biResults.querySelectorAll('.combo-item[data-code]').forEach(el => el.addEventListener('click', () => {
-        biHidden.value = el.dataset.code;
-        biSearch.value = (el.dataset.code ? el.dataset.code + '｜' : '') + el.dataset.name;
-        biResults.style.display = 'none';
-      }));
+      activeIdx = -1;
+      items().forEach(el => el.addEventListener('click', () => choose(el)));
     };
     biSearch.addEventListener('input', () => { biHidden.value = ''; drawResults(); });
     biSearch.addEventListener('focus', drawResults);
+    // 鍵盤導覽：↓↑ 移動反白、Enter 選取、Esc 關閉
+    biSearch.addEventListener('keydown', e => {
+      const visible = biResults.style.display !== 'none';
+      if (e.key === 'ArrowDown') { if (!visible) drawResults(); setActive(activeIdx + 1); e.preventDefault(); }
+      else if (e.key === 'ArrowUp') { if (!visible) drawResults(); setActive(activeIdx < 0 ? items().length - 1 : activeIdx - 1); e.preventDefault(); }
+      else if (e.key === 'Enter') { const els = items(); if (visible && activeIdx >= 0 && els[activeIdx]) { choose(els[activeIdx]); e.preventDefault(); } }
+      else if (e.key === 'Escape') { biResults.style.display = 'none'; }
+    });
     document.addEventListener('click', e => { if (e.target !== biSearch && !e.target.closest('#bi-results')) biResults.style.display = 'none'; });
 
     document.getElementById('bi-add').addEventListener('click',()=>{
