@@ -564,7 +564,7 @@ const App = {
         <div class="grid grid-4">
           <div class="field"><label>批次名稱</label><input id="rv-name" value="${P.建議批次名}"></div>
           <div class="field"><label>採購日期</label><input id="rv-date" type="date" value="${P.日期}"></div>
-          <div class="field"><label>來源訂單</label><input id="rv-order" value="Life Extension｜Order# ${P.Order}"></div>
+          <div class="field"><label>來源訂單</label><input id="rv-order" value="${P.來源 ? P.來源 + '｜' : ''}Order# ${P.Order}"></div>
           <div class="field"><label>追蹤碼</label><input id="rv-track" value="${P.追蹤碼}"></div>
         </div>
       </div>
