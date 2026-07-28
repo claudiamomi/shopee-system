@@ -224,13 +224,18 @@ const Cloud = {
   enabled() { return !!this.url; },
 
   // 開機同步：拉主資料覆蓋本機、拉待確認佇列；雲端若空且本機有真實資料才初始化上傳。
-  // 冷啟動（Apps Script 睡著）第一次呼叫會慢，故自動重試數次，避免誤判「連線失敗」。
-  async syncIn(retries = 2) {
+  // ⚠️ 冷啟動（Apps Script 睡著）喚醒常需 30-60 秒，故多次重試＋較長等待（總撐約 60-90 秒），
+  //    避免誤判「連不上」而擋住存檔（那會造成「改了又被雲端蓋回」）。單次 fetch 加 25 秒逾時保護。
+  async syncIn(retries = 6) {
     if (!this.enabled()) { this.status = 'off'; this.synced = false; return; }
     this.status = 'syncing';
+    if (typeof App !== 'undefined' && App.updateCloudBadge) App.updateCloudBadge();
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        const r = await fetch(this.url, { method: 'GET' });
+        const ctrl = new AbortController();
+        const to = setTimeout(() => ctrl.abort(), 25000);          // 單次最多等 25 秒（容忍冷啟動慢）
+        const r = await fetch(this.url + '?t=' + Date.now(), { method: 'GET', signal: ctrl.signal });
+        clearTimeout(to);
         const j = await r.json();
         if (j && j.ok) {
           if (j.data && j.data.商品) {
@@ -245,7 +250,7 @@ const Cloud = {
           return;
         }
       } catch (e) { console.warn(`雲端拉取失敗（第 ${attempt + 1} 次）`, e); }
-      if (attempt < retries) await new Promise(res => setTimeout(res, 1200 * (attempt + 1))); // 遞增等待，喚醒冷啟動
+      if (attempt < retries) await new Promise(res => setTimeout(res, Math.min(3000 + attempt * 2000, 10000))); // 遞增等待喚醒冷啟動
     }
     this.status = 'error'; this.synced = false;              // 幾次都失敗 → 維持未同步，禁止推雲端
   },
