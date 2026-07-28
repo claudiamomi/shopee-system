@@ -225,20 +225,24 @@ const App = {
     return { usd, ntd, 件數, 品項數: batch.品項.length, 毛利CC, 毛利愛屋, 未定價 };
   },
 
+  批次狀態序: ['待處理', '已集貨', '已完成'],
+  批次區標: { '待處理': '📥 訂單包裹待處理專區', '已集貨': '📦 包裹已集貨專區', '已完成': '✅ 採購已完成專區' },
+  批次狀態樣式: { '待處理': 'wait', '已集貨': 'ship', '已完成': 'done' },
+  _st(b) { return b.狀態 || (b.完成 ? '已完成' : '待處理'); },   // 相容：舊資料只有 完成 布林
+
   renderPurchases() {
     const list = DB.取採購();
-    // 未完成的排前面，各自再依日期新到舊
-    const sorted = list.slice().sort((a,b)=> {
-      const da = a.完成?1:0, db = b.完成?1:0;
-      if (da !== db) return da - db;
-      return (b.日期||'').localeCompare(a.日期||'');
-    });
-    const rows = sorted.map(b => {
+    // 依狀態分三區，各區內依日期新到舊
+    const groups = { '待處理': [], '已集貨': [], '已完成': [] };
+    list.forEach(b => { (groups[this._st(b)] || groups['待處理']).push(b); });
+    Object.values(groups).forEach(g => g.sort((a,b)=>(b.日期||'').localeCompare(a.日期||'')));
+    const rowOf = b => {
       const t = this.batchTotals(b);
-      const done = !!b.完成;
-      return `<tr class="${done?'batch-done':''}">
+      const s = this._st(b);
+      const stSel = `<select class="b-status" data-id="${b.id}" title="移到其他區">${this.批次狀態序.map(x=>`<option ${x===s?'selected':''}>${x}</option>`).join('')}</select>`;
+      return `<tr class="${s==='已完成'?'batch-done':''}">
         <td><input type="checkbox" class="b-chk" data-id="${b.id}"></td>
-        <td><b>${b.名稱}</b>${done?' <span class="pill done">✅ 已完成</span>':''}${b.追蹤碼?`<br><span class="muted" style="font-weight:normal;font-size:12px">📦 ${b.追蹤碼}</span>`:''}</td>
+        <td><b>${b.名稱}</b>${b.追蹤碼?`<br><span class="muted" style="font-weight:normal;font-size:12px">📦 ${b.追蹤碼}</span>`:''}</td>
         <td>${b.品牌?`<span class="brandtag">${b.品牌}</span> `:''}${b.來源||''}</td>
         <td class="num">${t.品項數}</td>
         <td class="num">${t.件數}</td>
@@ -247,9 +251,16 @@ const App = {
         <td class="num good">${t.毛利愛屋?錢(t.毛利愛屋):'<span class="muted">—</span>'}</td>
         <td class="muted">${b.日期||''}</td>
         <td><div class="row-actions">
+          ${stSel}
           <button class="btn btn-sm" data-open="${b.id}">明細</button>
           <button class="btn btn-sm btn-danger" data-delb="${b.id}">刪</button>
         </div></td></tr>`;
+    };
+    const rows = this.批次狀態序.map(s => {
+      const g = groups[s];
+      const head = `<tr class="section-head"><td colspan="10">${this.批次區標[s]}　<span class="muted">（${g.length}）</span></td></tr>`;
+      const body = g.length ? g.map(rowOf).join('') : `<tr><td colspan="10" class="empty" style="padding:12px">— 此區目前沒有批次 —</td></tr>`;
+      return head + body;
     }).join('');
     const pend = DB.取待確認();
     const pendBanner = pend.length ? `
@@ -305,6 +316,11 @@ const App = {
         if (!confirm('確定刪除此批次？')) return;
         DB.存採購(DB.取採購().filter(x => x.id !== b.dataset.delb));
         this.go('purchases');
+      }));
+    document.querySelectorAll('.b-status').forEach(sel =>       // 移動批次到其他專區
+      sel.addEventListener('change', () => {
+        const l = DB.取採購(); const bb = l.find(x => x.id === sel.dataset.id);
+        if (bb) { bb.狀態 = sel.value; bb.完成 = (sel.value === '已完成'); DB.存採購(l); this.go('purchases'); }
       }));
     // ---- 勾選 / 全選 / 合併 ----
     const chks = () => [...document.querySelectorAll('.b-chk')];
@@ -369,7 +385,7 @@ const App = {
         <td><button class="btn btn-sm btn-danger" data-rm="${i}">移除</button></td></tr>`;
     }).join('');
     document.getElementById('content').innerHTML = `
-      <div class="page-head"><h1>${batch.名稱}${batch.完成?' <span class="pill done">✅ 已完成</span>':''}
+      <div class="page-head"><h1>${batch.名稱} <span class="pill ${this.批次狀態樣式[this._st(batch)]}">${this._st(batch)}</span>
         <button class="btn btn-sm" id="b-edit" style="vertical-align:middle;font-size:13px">✏️ 編輯</button></h1>
         <p>${batch.日期||''}${batch.品牌?'　<span class="brandtag">'+batch.品牌+'</span>':''}${batch.來源?'　'+batch.來源:''}${batch.追蹤碼?'　追蹤 '+batch.追蹤碼:''}</p></div>
       <div class="kpis" style="margin-bottom:18px">
@@ -408,7 +424,8 @@ const App = {
       </div>
       <div class="toolbar"><button class="btn" id="b-back">← 回批次列表</button>
         <div class="spacer"></div>
-        <button class="btn ${batch.完成?'':'btn-primary'}" id="b-done">${batch.完成?'↩ 取消完成':'✅ 標記採購完成'}</button>
+        <span class="muted" style="margin-right:6px">狀態：</span>
+        ${this.批次狀態序.map(x=>`<button class="btn btn-sm ${this._st(batch)===x?'btn-primary':''}" data-setstatus="${x}">${x}</button>`).join('')}
       </div>`;
 
     document.getElementById('b-back').addEventListener('click',()=>this.go('purchases'));
@@ -419,9 +436,11 @@ const App = {
       const st = document.getElementById('b-note-status');
       if (st) { st.textContent = '✅ 備註已儲存'; setTimeout(() => { if (st) st.textContent = '　'; }, 2000); }
     });
-    document.getElementById('b-done').addEventListener('click',()=>{
-      batch.完成 = !batch.完成; DB.存採購(list); this.batchDetail(id);
-    });
+    document.querySelectorAll('[data-setstatus]').forEach(btn =>
+      btn.addEventListener('click', () => {
+        batch.狀態 = btn.dataset.setstatus; batch.完成 = (batch.狀態 === '已完成');
+        DB.存採購(list); this.batchDetail(id);
+      }));
     // 商品可搜尋欄位（取代長下拉）：打貨號或品名即時篩選，點選帶入
     const biSearch = document.getElementById('bi-search');
     const biHidden = document.getElementById('bi-prod');
