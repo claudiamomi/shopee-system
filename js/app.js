@@ -344,23 +344,40 @@ const App = {
     mergeBtn.addEventListener('click', () => this.mergeBatches(selected()));
   },
 
-  // 合併多張採購批次成一張：相同貨號＋同單價USD 的品項合併數量（不同價分開列）。
+  // 合併品項：同貨號就累加數量（$0 無單價者併入同貨號有價的、取非零最高單價），並保留到貨數量。
+  _mergeItems(items) {
+    const groups = {}, order = [];
+    (items || []).forEach(it => {
+      const h = it.貨號;
+      if (!groups[h]) { groups[h] = []; order.push(h); }
+      groups[h].push(it);
+    });
+    return order.map(h => {
+      let 訂 = 0, 到 = 0, 單價 = 0;
+      groups[h].forEach(it => {
+        訂 += Number(it.數量) || 0;
+        到 += this._recv(it);                        // 實收（未填=全到）
+        const p = Number(it.單價USD) || 0;
+        if (p > 單價) 單價 = p;                        // 取非零單價；$0 併入有價的
+      });
+      const item = { 貨號: h, 數量: 訂, 單價USD: 單價 };
+      if (到 < 訂) item.到貨數量 = 到;                  // 有缺件才記到貨；全到就省略（=全到）
+      return item;
+    });
+  },
+
+  // 合併多張採購批次成一張：同貨號累加數量（見 _mergeItems）。
   mergeBatches(ids) {
     if (!ids || ids.length < 2) return;
     const list = DB.取採購();
     const picked = list.filter(b => ids.includes(b.id));
     if (picked.length < 2) return;
     const names = picked.map(b => b.名稱).join('＋');
-    if (!confirm(`確定把這 ${picked.length} 張採購單合併成一張？\n（${names}）\n原本的 ${picked.length} 張會被移除、內容併到新的一張；相同商品同價會合併數量。`)) return;
-    // 合併品項：key = 貨號 + 單價USD
-    const 品項 = [];
-    const idx = {};
-    picked.forEach(b => (b.品項 || []).forEach(it => {
-      const 單價 = Number(it.單價USD) || 0;
-      const key = it.貨號 + '@' + 單價;
-      if (idx[key] != null) 品項[idx[key]].數量 = (Number(品項[idx[key]].數量) || 0) + (Number(it.數量) || 0);
-      else { idx[key] = 品項.length; 品項.push({ 貨號: it.貨號, 數量: Number(it.數量) || 0, 單價USD: 單價 }); }
-    }));
+    if (!confirm(`確定把這 ${picked.length} 張採購單合併成一張？\n（${names}）\n原本的 ${picked.length} 張會被移除、內容併到新的一張；相同商品會合併數量（無單價的併入有價的）。`)) return;
+    // 合併品項：同貨號累加
+    const allItems = [];
+    picked.forEach(b => (b.品項 || []).forEach(it => allItems.push(it)));
+    const 品項 = this._mergeItems(allItems);
     const 日期 = picked.map(b => b.日期 || '').sort().slice(-1)[0] || new Date().toISOString().slice(0, 10);
     const 來源 = [...new Set(picked.map(b => b.來源).filter(Boolean))].join('、');
     const 追蹤碼 = [...new Set(picked.map(b => b.追蹤碼).filter(Boolean))].join('、');
