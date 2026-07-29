@@ -200,15 +200,19 @@ const App = {
   /* ================= 採購批次（好運XXXX）================= */
   // 算一批的總金額（USD）、總進貨成本（NTD，含空運），以及 CC/愛屋 兩賣場的總毛利。
   // 毛利＝用「這批實付單價」當成本、主檔售價當賣價、平日（非活動日）估算；未定價（售價0）不計入。
+  _recv(it) { return it.到貨數量 == null ? (Number(it.數量) || 0) : Number(it.到貨數量); },  // 實收數量（未填=視為全到）
+
   batchTotals(batch) {
     const prods = DB.取商品();
     const 賣場 = DB.取賣場();
     const find = h => prods.find(p => p.貨號 === h);
-    let usd = 0, ntd = 0, 件數 = 0, 毛利CC = 0, 毛利愛屋 = 0, 未定價 = 0;
+    let usd = 0, ntd = 0, 件數 = 0, 毛利CC = 0, 毛利愛屋 = 0, 未定價 = 0, 訂購件數 = 0;
     batch.品項.forEach(it => {
       const p = find(it.貨號) || {};
       const 單價 = Number(it.單價USD) || Number(p.進貨USD) || 0;
-      const qty = Number(it.數量) || 0;
+      const qty = this._recv(it);                 // ⭐ 成本/毛利/件數 一律用「實收數量」
+      訂購件數 += (Number(it.數量) || 0);
+      if (qty <= 0) return;                        // 未到貨（實收 0）不計入成本/毛利/件數
       usd += 單價 * qty;
       ntd += (單價 * SPEC.匯率 + (Number(p.重量lb)||0) * SPEC.空運費_每磅) * qty;
       件數 += qty;
@@ -222,7 +226,7 @@ const App = {
         未定價 += qty;
       }
     });
-    return { usd, ntd, 件數, 品項數: batch.品項.length, 毛利CC, 毛利愛屋, 未定價 };
+    return { usd, ntd, 件數, 品項數: batch.品項.length, 毛利CC, 毛利愛屋, 未定價, 訂購件數, 缺件: 訂購件數 - 件數 };
   },
 
   批次狀態序: ['待處理', '已集貨', '已完成'],
@@ -242,7 +246,7 @@ const App = {
       const stSel = `<select class="b-status" data-id="${b.id}" title="移到其他區">${this.批次狀態序.map(x=>`<option ${x===s?'selected':''}>${x}</option>`).join('')}</select>`;
       return `<tr class="${s==='已完成'?'batch-done':''}">
         <td><input type="checkbox" class="b-chk" data-id="${b.id}"></td>
-        <td><b>${b.名稱}</b>${b.追蹤碼?`<br><span class="muted" style="font-weight:normal;font-size:12px">📦 ${b.追蹤碼}</span>`:''}</td>
+        <td><b>${b.名稱}</b>${t.缺件>0?` <span class="pill wait">缺貨 ${t.缺件}</span>`:''}${b.追蹤碼?`<br><span class="muted" style="font-weight:normal;font-size:12px">📦 ${b.追蹤碼}</span>`:''}</td>
         <td>${b.品牌?`<span class="brandtag">${b.品牌}</span> `:''}${b.來源||''}</td>
         <td class="num">${t.品項數}</td>
         <td class="num">${t.件數}</td>
@@ -367,6 +371,38 @@ const App = {
     this.batchDetail(merged.id);
   },
 
+  // 把某批的「未到貨」數量搬到另一張採購單（延到之後、與集貨併單）；搬走後原批只留實收部分。
+  moveShortfall(srcId, targetId) {
+    const list = DB.取採購();
+    const src = list.find(b => b.id === srcId);
+    if (!src) return;
+    const moving = [];
+    src.品項.forEach(it => {
+      const 缺 = (Number(it.數量)||0) - this._recv(it);
+      if (缺 > 0) moving.push({ 貨號: it.貨號, 數量: 缺, 單價USD: Number(it.單價USD)||0 });
+    });
+    if (!moving.length) return alert('這批沒有未到貨的品項。');
+    let target, isNew = targetId === '__new__';
+    if (isNew) target = { id:'b'+Date.now(), 名稱: src.名稱+'-補', 日期: new Date().toISOString().slice(0,10), 品牌: src.品牌||'', 來源: src.來源||'', 追蹤碼:'', 品項: [], 狀態:'待處理' };
+    else target = list.find(b => b.id === targetId);
+    if (!target) return;
+    const 總件 = moving.reduce((s,m)=>s+m.數量,0);
+    if (!confirm(`把 ${moving.length} 項未到貨品項（共 ${總件} 件）搬到「${target.名稱}」？\n搬走後這批只保留實收部分。`)) return;
+    target.品項 = target.品項 || [];
+    moving.forEach(m => {                                   // 目標接收：未到貨→到貨數量預設 0（待到貨）；同貨號同單價併數量
+      const ex = target.品項.find(x => x.貨號===m.貨號 && (Number(x.單價USD)||0)===m.單價USD);
+      if (ex) { const 舊到 = this._recv(ex); ex.數量 = (Number(ex.數量)||0) + m.數量; ex.到貨數量 = 舊到; }
+      else target.品項.push({ 貨號:m.貨號, 數量:m.數量, 單價USD:m.單價USD, 到貨數量:0 });
+    });
+    src.品項 = src.品項                                     // 原批：訂購數改為實收數，全未到的移除
+      .map(it => { const 到 = this._recv(it); return { ...it, 數量: 到, 到貨數量: 到 }; })
+      .filter(it => (Number(it.數量)||0) > 0);
+    if (isNew) list.push(target);
+    DB.存採購(list);
+    alert(`✅ 已搬移到「${target.名稱}」。`);
+    this.batchDetail(srcId);
+  },
+
   // 批次明細（品項清單 + 加減品項）
   batchDetail(id) {
     const list = DB.取採購();
@@ -377,11 +413,15 @@ const App = {
     const rows = batch.品項.map((it,i) => {
       const p = prods.find(x => x.貨號 === it.貨號) || { 品名:'（主檔找不到）' };
       const 單價 = Number(it.單價USD) || Number(p.進貨USD) || 0;
-      return `<tr>
-        <td><b>${it.貨號}</b></td><td>${p.品名}</td>
-        <td class="num">${it.數量}</td>
+      const 訂 = Number(it.數量)||0;
+      const 到 = this._recv(it);
+      const 缺 = Math.max(0, 訂 - 到);
+      return `<tr class="${到<=0?'batch-done':''}">
+        <td><b>${it.貨號}</b></td><td>${p.品名}${到<=0?' <span class="pill wait">未到貨</span>':(缺>0?` <span class="pill wait">缺 ${缺}</span>`:'')}</td>
+        <td class="num">${訂}</td>
+        <td class="num"><input type="number" class="it-recv" data-i="${i}" value="${到}" min="0" max="${訂}" style="width:56px;text-align:right"></td>
         <td class="num">$${單價.toFixed(2)}</td>
-        <td class="num">$${(單價*it.數量).toFixed(2)}</td>
+        <td class="num">$${(單價*到).toFixed(2)}</td>
         <td><button class="btn btn-sm btn-danger" data-rm="${i}">移除</button></td></tr>`;
     }).join('');
     document.getElementById('content').innerHTML = `
@@ -390,7 +430,7 @@ const App = {
         <p>${batch.日期||''}${batch.品牌?'　<span class="brandtag">'+batch.品牌+'</span>':''}${batch.來源?'　'+batch.來源:''}${batch.追蹤碼?'　追蹤 '+batch.追蹤碼:''}</p></div>
       <div class="kpis" style="margin-bottom:18px">
         <div class="kpi"><div class="label">品項數</div><div class="value">${t.品項數}</div></div>
-        <div class="kpi"><div class="label">總件數</div><div class="value">${t.件數}</div></div>
+        <div class="kpi"><div class="label">總件數（實收）</div><div class="value">${t.件數}</div>${t.缺件>0?`<div class="sub" style="color:var(--shopee)">訂購 ${t.訂購件數}／缺 ${t.缺件} 未到</div>`:''}</div>
         <div class="kpi"><div class="label">總金額 USD</div><div class="value">$${t.usd.toFixed(2)}</div></div>
         <div class="kpi"><div class="label">總成本 NTD</div><div class="value">${錢(t.ntd)}</div><div class="sub">含空運，匯率 ${SPEC.匯率}</div></div>
         <div class="kpi"><div class="label">CC 總毛利</div><div class="value ${t.毛利CC<0?'bad':'good'}">${錢(t.毛利CC)}</div><div class="sub">已扣 $60/品項${t.未定價?`；${t.未定價} 件未定價未計`:''}</div></div>
@@ -417,11 +457,20 @@ const App = {
       </div>
       <div class="card">
         <h2>🧾 批次品項</h2>
+        <div class="muted" style="margin:-6px 0 8px;font-size:13px">「到貨」欄可改成實際收到的數量（未到填 0）；成本、毛利、件數都依實收計算。</div>
         <div class="table-wrap"><table>
-          <thead><tr><th>貨號</th><th>品名</th><th class="num">數量</th><th class="num">單價USD</th><th class="num">小計USD</th><th></th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="6" class="empty">尚無品項</td></tr>`}</tbody>
+          <thead><tr><th>貨號</th><th>品名</th><th class="num">訂購</th><th class="num">到貨</th><th class="num">單價USD</th><th class="num">小計USD</th><th></th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="7" class="empty">尚無品項</td></tr>`}</tbody>
         </table></div>
       </div>
+      ${t.缺件>0 ? `<div class="card">
+        <h2>📦 未到貨品項（缺 ${t.缺件} 件）</h2>
+        <p class="muted" style="margin:-4px 0 10px">會延到之後才到？把「未到貨」的數量移到其他採購單（下週那批／新建補單），到貨時再一起處理。搬走後這批只留實收部分。</p>
+        <div class="toolbar" style="justify-content:flex-start;gap:8px">
+          <select id="mv-target" class="search" style="max-width:280px;flex:0 0 auto"><option value="__new__">➕ 新建「${batch.名稱}-補」</option>${list.filter(b=>b.id!==id).map(b=>`<option value="${b.id}">${b.名稱}</option>`).join('')}</select>
+          <button class="btn btn-primary" id="mv-go">搬移未到貨品項 →</button>
+        </div>
+      </div>` : ''}
       <div class="toolbar"><button class="btn" id="b-back">← 回批次列表</button>
         <div class="spacer"></div>
         <span class="muted" style="margin-right:6px">狀態：</span>
@@ -441,6 +490,14 @@ const App = {
         batch.狀態 = btn.dataset.setstatus; batch.完成 = (batch.狀態 === '已完成');
         DB.存採購(list); this.batchDetail(id);
       }));
+    document.querySelectorAll('.it-recv').forEach(inp =>          // 改「到貨數量」
+      inp.addEventListener('change', () => {
+        const i = +inp.dataset.i, ord = Number(batch.品項[i].數量)||0;
+        let v = Math.floor(Number(inp.value)||0); if (v<0) v=0; if (v>ord) v=ord;
+        batch.品項[i].到貨數量 = v; DB.存採購(list); this.batchDetail(id);
+      }));
+    const mvGo = document.getElementById('mv-go');               // 搬移未到貨品項到其他批次
+    if (mvGo) mvGo.addEventListener('click', () => this.moveShortfall(id, document.getElementById('mv-target').value));
     // 商品可搜尋欄位（取代長下拉）：打貨號或品名即時篩選，點選帶入
     const biSearch = document.getElementById('bi-search');
     const biHidden = document.getElementById('bi-prod');
