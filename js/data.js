@@ -259,17 +259,39 @@ const Cloud = {
   // section: '商品' | '賣場' | '活動日' | '採購' | 'params'
   scheduleOut(section, value) {
     if (!this.enabled()) return;
-    // ⭐ 防護一：這台還沒成功同步過雲端，就絕不推上去（避免空的/舊的蓋掉雲端好資料）。
+    this._pending = this._pending || {};
+    this._pending[section] = value;               // 先記下這次改動（即使還沒同步，稍後按重試才有東西可補推）
+    // ⭐ 防護一：這台還沒成功同步過雲端，就絕不「自動」推上去（避免空的/舊的蓋掉雲端好資料）。
     if (!this.synced) {
-      console.warn('尚未與雲端同步成功，暫不上傳本機變更，避免覆蓋雲端資料。');
+      console.warn('尚未與雲端同步成功，暫不自動上傳本機變更，避免覆蓋雲端資料。');
       this.status = 'error';
       if (typeof App !== 'undefined' && App.updateCloudBadge) App.updateCloudBadge();
+      if (typeof App !== 'undefined' && App.toastUnsynced) App.toastUnsynced(); // ⭐ 存檔時跳出醒目提示：這次改動還沒上雲端
       return;
     }
-    this._pending = this._pending || {};
-    this._pending[section] = value;
     clearTimeout(this._timer);
     this._timer = setTimeout(() => this._flush(), 800);
+  },
+
+  // 使用者在「未同步提示」按重試：先確認雲端連得上、且雲端有正確資料 → 才允許把「本機這次改動」補推上去。
+  // 用 push（疊到雲端最新後存回），不是 pull，所以不會把剛做的改動蓋掉。連不上就回 false，改動仍安全留在本機。
+  async retryPush() {
+    if (!this.enabled()) return false;
+    this.status = 'syncing';
+    if (typeof App !== 'undefined' && App.updateCloudBadge) App.updateCloudBadge();
+    try {
+      const r = await fetch(this.url + '?t=' + Date.now(), { method: 'GET' });
+      const j = await r.json();
+      if (!(j && j.ok && j.data && j.data.商品)) throw new Error('雲端無正確回應');
+      this.synced = true;                          // 確認連得上且雲端有資料 → 這台已可安全上傳
+    } catch (e) {
+      this.status = 'error';
+      if (typeof App !== 'undefined' && App.updateCloudBadge) App.updateCloudBadge();
+      console.warn('重試上傳：仍連不上雲端', e);
+      return false;
+    }
+    await this._flush();                            // 把本機這次改動疊到雲端最新後存回
+    return this.status !== 'error';
   },
 
   // ⭐ 防護二（分段合併）：抓雲端最新 → 只覆蓋本機這次改動的段 → 存回。

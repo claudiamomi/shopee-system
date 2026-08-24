@@ -135,6 +135,20 @@ input:focus, select:focus { outline: none; border-color: var(--shopee); box-shad
 }
 .sync-warn .btn { margin-left: auto; }
 
+/* ---------- 存檔未上雲端：右下角醒目提示 ---------- */
+.unsync-toast {
+  position: fixed; right: 16px; bottom: 16px; z-index: 60;
+  width: min(360px, calc(100vw - 32px));
+  background: #fdecec; border: 2px solid var(--bad); color: #7a1f1f;
+  border-radius: var(--radius); padding: 14px 16px;
+  box-shadow: 0 8px 28px rgba(0,0,0,.22);
+  animation: unsync-pop .18s ease-out;
+}
+.unsync-toast .ut-title { font-size: 15px; font-weight: 800; margin-bottom: 6px; }
+.unsync-toast .ut-body { font-size: 13px; line-height: 1.55; }
+.unsync-toast .ut-btns { display: flex; gap: 8px; margin-top: 10px; }
+@keyframes unsync-pop { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
 /* ---------- KPI 數字卡 ---------- */
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 6px; }
 .kpi { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); }

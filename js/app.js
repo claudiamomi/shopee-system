@@ -38,6 +38,38 @@ const App = {
     });
   },
 
+  // 存採購/商品等資料時，如果偵測到「這次改動還沒上雲端」→ 跳出醒目提示（不阻擋操作，附重試鈕）。
+  // 只在有設定雲端、且尚未同步成功時才會被叫到（見 data.js scheduleOut）。
+  toastUnsynced() {
+    if (document.getElementById('unsync-toast')) return;   // 已經有就不重複跳
+    const d = document.createElement('div');
+    d.id = 'unsync-toast';
+    d.className = 'unsync-toast';
+    d.innerHTML = `<div class="ut-title">⚠️ 這次改動尚未上傳雲端</div>
+      <div class="ut-body">可能連不上雲端，改動目前<b>只存在這台裝置</b>。<br>
+      先別關掉或重新整理頁面（重整會用雲端舊資料蓋掉這次改動）。請按「重試上傳」把這次改動存到雲端。</div>
+      <div class="ut-btns">
+        <button class="btn btn-primary btn-sm" id="ut-retry">🔄 重試上傳</button>
+        <button class="btn btn-sm" id="ut-close">先知道了</button>
+      </div>`;
+    document.body.appendChild(d);
+    const close = () => { const el = document.getElementById('unsync-toast'); if (el) el.remove(); };
+    document.getElementById('ut-close').addEventListener('click', close);
+    document.getElementById('ut-retry').addEventListener('click', async () => {
+      const btn = document.getElementById('ut-retry');
+      btn.textContent = '上傳中…'; btn.disabled = true;
+      const ok = await Cloud.retryPush();            // push 本機這次改動（不是 pull，不會蓋掉改動）
+      this.updateCloudBadge();
+      if (ok) {
+        close();
+        this.go(this.view);                          // 重新渲染：頂部未同步橫幅也一起消失
+      } else {
+        btn.textContent = '🔄 重試上傳'; btn.disabled = false;
+        alert('還是連不上雲端。改動仍安全保存在這台裝置，請檢查網路後再按一次「重試上傳」。\n（在連上之前請不要重新整理頁面。）');
+      }
+    });
+  },
+
   // 把 ISO 時間字串轉成好讀的本地時間（給備份清單用）
   fmtTime(iso) {
     const d = new Date(iso);
@@ -51,6 +83,9 @@ const App = {
     if (!el) return;
     const map = { off:'💾 本機', ok:'☁️ 已同步', syncing:'⏳ 同步中', error:'⚠️ 雲端失敗' };
     el.textContent = map[Cloud.status] || '💾 本機';
+    if (Cloud.status === 'ok') {                    // 一旦同步成功，把「未同步提示」收掉
+      const t = document.getElementById('unsync-toast'); if (t) t.remove();
+    }
   },
 
   bindNav() {
