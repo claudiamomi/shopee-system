@@ -160,11 +160,12 @@ input:focus, select:focus { outline: none; border-color: var(--shopee); box-shad
 
 /* ---------- 表格 ---------- */
 .table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--line); }
-table { width: 100%; border-collapse: collapse; background: #fff; min-width: 640px; }
-th, td { padding: 11px 12px; text-align: left; border-bottom: 1px solid var(--line); font-size: 14px; white-space: nowrap; }
-th { background: #fafbfc; font-weight: 700; color: var(--ink-soft); font-size: 12.5px; position: sticky; top: 0; }
+table { width: 100%; border-collapse: collapse; background: #fff; }
+/* 文字欄可換行、間距縮小 → 表格能縮到螢幕內，不用左右拉；只有數字欄不換行 */
+th, td { padding: 7px 8px; text-align: left; border-bottom: 1px solid var(--line); font-size: 13.5px; white-space: normal; word-break: break-word; vertical-align: top; }
+th { background: #fafbfc; font-weight: 700; color: var(--ink-soft); font-size: 12px; position: sticky; top: 0; white-space: nowrap; }
 tbody tr:hover { background: #fcfcfd; }
-td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* 品名欄：長名自動換行，避免整張表被撐寬而出現底部左右拉桿 */
 td.pname { white-space: normal; word-break: break-word; min-width: 220px; line-height: 1.35; }
 .good { color: var(--good); }

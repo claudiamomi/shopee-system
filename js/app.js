@@ -268,9 +268,16 @@ const App = {
   批次區標: { '待處理': '📥 包裹待處理專區', '已集貨': '📦 包裹已集貨專區', '已完成': '✅ 採購已完成專區' },
   批次狀態樣式: { '待處理': 'wait', '已集貨': 'ship', '已完成': 'done' },
   _st(b) { return b.狀態 || (b.完成 ? '已完成' : '待處理'); },   // 相容：舊資料只有 完成 布林
+  // 專區收合狀態（記在本機）：預設「已完成」收合，避免頁面越拉越長
+  _purchCollapsed() {
+    try { return JSON.parse(localStorage.getItem('shopee_purch_collapsed')) || { '已完成': true }; }
+    catch (e) { return { '已完成': true }; }
+  },
+  _setPurchCollapsed(m) { try { localStorage.setItem('shopee_purch_collapsed', JSON.stringify(m)); } catch (e) {} },
 
   renderPurchases() {
     const list = DB.取採購();
+    const collapsed = this._purchCollapsed();
     // 依狀態分三區，各區內依日期新到舊
     const groups = { '待處理': [], '已集貨': [], '已完成': [] };
     list.forEach(b => { (groups[this._st(b)] || groups['待處理']).push(b); });
@@ -279,16 +286,14 @@ const App = {
       const t = this.batchTotals(b);
       const s = this._st(b);
       const stSel = `<select class="b-status" data-id="${b.id}" title="移到其他區">${this.批次狀態序.map(x=>`<option ${x===s?'selected':''}>${x}</option>`).join('')}</select>`;
-      return `<tr class="${s==='已完成'?'batch-done':''}">
+      return `<tr class="${s==='已完成'?'batch-done':''}" data-secrow="${s}"${collapsed[s]?' hidden':''}>
         <td><input type="checkbox" class="b-chk" data-id="${b.id}"></td>
-        <td><b>${b.名稱}</b>${t.缺件>0?` <span class="pill wait">缺貨 ${t.缺件}</span>`:''}${b.追蹤碼?`<br><span class="muted" style="font-weight:normal;font-size:12px">📦 ${b.追蹤碼}</span>`:''}</td>
+        <td><b>${b.名稱}</b>${t.缺件>0?` <span class="pill wait">缺貨 ${t.缺件}</span>`:''}${b.日期?`<br><span class="muted" style="font-weight:normal;font-size:11.5px">📅 ${b.日期}</span>`:''}${b.追蹤碼?`<br><span class="muted" style="font-weight:normal;font-size:11.5px">📦 ${b.追蹤碼}</span>`:''}</td>
         <td>${b.品牌?`<span class="brandtag">${b.品牌}</span> `:''}${b.來源||''}</td>
-        <td class="num">${t.品項數}</td>
         <td class="num">${t.件數}</td>
         <td class="num">$${t.usd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
         <td class="num good">${t.毛利CC?錢(t.毛利CC):'<span class="muted">—</span>'}</td>
         <td class="num good">${t.毛利愛屋?錢(t.毛利愛屋):'<span class="muted">—</span>'}</td>
-        <td class="muted">${b.日期||''}</td>
         <td><div class="row-actions">
           ${stSel}
           <button class="btn btn-sm" data-open="${b.id}">明細</button>
@@ -297,8 +302,12 @@ const App = {
     };
     const rows = this.批次狀態序.map(s => {
       const g = groups[s];
-      const head = `<tr class="section-head"><td colspan="10">${this.批次區標[s]}　<span class="muted">（${g.length}）</span></td></tr>`;
-      const body = g.length ? g.map(rowOf).join('') : `<tr><td colspan="10" class="empty" style="padding:12px">— 此區目前沒有批次 —</td></tr>`;
+      const isC = !!collapsed[s];
+      const head = `<tr class="section-head" data-sec="${s}" style="cursor:pointer" title="點一下收合／展開">`
+        + `<td colspan="8"><span class="sec-caret">${isC?'▸':'▾'}</span> ${this.批次區標[s]}　`
+        + `<span class="muted">（${g.length}）${isC?'・已收合，點此展開':''}</span></td></tr>`;
+      const body = g.length ? g.map(rowOf).join('')
+        : `<tr data-secrow="${s}"${isC?' hidden':''}><td colspan="8" class="empty" style="padding:12px">— 此區目前沒有批次 —</td></tr>`;
       return head + body;
     }).join('');
     const pend = DB.取待確認();
@@ -325,11 +334,11 @@ const App = {
           ${Cloud.enabled() ? '<button class="btn" id="b-refresh">🔄 重新整理（收信）</button>' : ''}
           <button class="btn btn-primary" id="b-add">➕ 新增批次</button></div>
         <div class="table-wrap"><table>
-          <thead><tr><th style="width:32px"><input type="checkbox" id="b-all" title="全選"></th>
-            <th>批次</th><th>來源訂單</th><th class="num">品項</th>
-            <th class="num">總件數</th><th class="num">總金額USD</th>
-            <th class="num">CC 毛利</th><th class="num">愛屋 毛利</th><th>日期</th><th></th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="10" class="empty">還沒有採購批次</td></tr>`}</tbody>
+          <thead><tr><th style="width:28px"><input type="checkbox" id="b-all" title="全選"></th>
+            <th>批次</th><th>來源訂單</th>
+            <th class="num">件數</th><th class="num">金額USD</th>
+            <th class="num">CC 毛利</th><th class="num">愛屋 毛利</th><th></th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="8" class="empty">還沒有採購批次</td></tr>`}</tbody>
         </table></div>
       </div>`;
   },
@@ -377,6 +386,12 @@ const App = {
       refreshMerge();
     });
     mergeBtn.addEventListener('click', () => this.mergeBatches(selected()));
+    // ---- 專區標題：點一下收合／展開（狀態記本機）----
+    document.querySelectorAll('#content tr.section-head[data-sec]').forEach(h =>
+      h.addEventListener('click', () => {
+        const m = this._purchCollapsed(); const sec = h.dataset.sec;
+        m[sec] = !m[sec]; this._setPurchCollapsed(m); this.go('purchases');
+      }));
   },
 
   // 合併品項：同貨號就累加數量（$0 無單價者併入同貨號有價的、取非零最高單價），並保留到貨數量。
