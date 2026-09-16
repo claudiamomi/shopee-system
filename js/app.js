@@ -326,6 +326,11 @@ const App = {
     return `
       <div class="page-head"><h1>採購批次</h1>
         <p>每一週的進貨批次（對應舊表的「好運XXXX」）。點「明細」看這批買了什麼、各幾件、總成本。</p></div>
+      <div class="card" style="padding:12px 16px">
+        <input id="po-search" type="search" placeholder="🔍 查商品是否訂過（輸入品名／貨號／品牌；僅查「待處理・已集貨」）"
+          style="width:100%;max-width:none">
+        <div id="po-search-result"></div>
+      </div>
       ${pendBanner}
       <div class="card">
         <div class="toolbar">
@@ -342,7 +347,45 @@ const App = {
         </table></div>
       </div>`;
   },
+  // 採購商品搜尋：查某商品是否在「待處理／已集貨」批次訂過（不含已完成）
+  renderPOSearch(q, el) {
+    q = (q || '').trim().toLowerCase();
+    if (!q) { el.innerHTML = ''; return; }
+    const byHao = {}; DB.取商品().forEach(p => byHao[p.貨號] = p);
+    const 批次 = DB.取採購().filter(b => { const s = this._st(b); return s === '待處理' || s === '已集貨'; });
+    const hits = []; let 總件 = 0;
+    批次.forEach(b => (b.品項 || []).forEach(it => {
+      const p = byHao[it.貨號] || {};
+      const hay = `${it.貨號 || ''} ${p.品名 || ''} ${p.品牌 || ''} ${it.品名 || ''}`.toLowerCase();
+      if (hay.includes(q)) { hits.push({ b, it, p }); 總件 += Number(it.數量) || 0; }
+    }));
+    if (!hits.length) {
+      el.innerHTML = `<div class="muted" style="padding:10px 2px">查無「${q}」的訂購紀錄（僅查待處理・已集貨）</div>`;
+      return;
+    }
+    hits.sort((a, b) => (b.b.日期 || '').localeCompare(a.b.日期 || ''));
+    const rows = hits.map(h => {
+      const s = this._st(h.b);
+      const 名 = h.p.品名 || h.it.品名 || h.it.貨號 || '(未知)';
+      return `<tr>
+        <td>${h.p.品牌 ? `<span class="brandtag">${h.p.品牌}</span> ` : ''}${名}<br><span class="muted" style="font-size:12px">${h.it.貨號 || ''}</span></td>
+        <td><a href="#" data-poopen="${h.b.id}"><b>${h.b.名稱}</b></a><br><span class="muted" style="font-size:12px">${h.b.日期 || ''}・${s}</span></td>
+        <td class="num">${h.it.數量} 件</td>
+        <td class="num">${h.it.單價USD ? '$' + h.it.單價USD : '<span class="muted">—</span>'}</td>
+      </tr>`;
+    }).join('');
+    el.innerHTML = `<div class="hint" style="margin:10px 0 6px">🔍 找到 <b>${hits.length}</b> 筆採購紀錄，累計 <b>${總件}</b> 件（僅含待處理・已集貨）</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>商品</th><th>批次</th><th class="num">數量</th><th class="num">單價USD</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>`;
+    el.querySelectorAll('[data-poopen]').forEach(a =>
+      a.addEventListener('click', e => { e.preventDefault(); this.batchDetail(a.dataset.poopen); }));
+  },
+
   afterPurchases() {
+    const si = document.getElementById('po-search');
+    const sr = document.getElementById('po-search-result');
+    if (si && sr) si.addEventListener('input', () => this.renderPOSearch(si.value, sr));
     document.querySelectorAll('[data-review]').forEach(b =>
       b.addEventListener('click', () => this.reviewPending(b.dataset.review)));
     document.querySelectorAll('[data-pdiscard]').forEach(b =>
