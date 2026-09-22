@@ -446,17 +446,19 @@ const App = {
       groups[h].push(it);
     });
     return order.map(h => {
-      let 訂 = 0, 到 = 0, 單價 = 0, 他平台 = false;
+      let 訂 = 0, 到 = 0, 單價 = 0, f711 = false, fRuten = false;
       groups[h].forEach(it => {
         訂 += Number(it.數量) || 0;
         到 += this._recv(it);                        // 實收（未填=全到）
         const p = Number(it.單價USD) || 0;
         if (p > 單價) 單價 = p;                        // 取非零單價；$0 併入有價的
-        if (it.他平台) 他平台 = true;                  // 同貨號只要有一筆標非蝦皮就保留標記
+        if (it.平台711) f711 = true;                   // 同貨號只要有一筆標記就保留
+        if (it.露天) fRuten = true;
       });
       const item = { 貨號: h, 數量: 訂, 單價USD: 單價 };
       if (到 < 訂) item.到貨數量 = 到;                  // 有缺件才記到貨；全到就省略（=全到）
-      if (他平台) item.他平台 = true;
+      if (f711) item.平台711 = true;
+      if (fRuten) item.露天 = true;
       return item;
     });
   },
@@ -491,7 +493,7 @@ const App = {
     const moving = [];
     src.品項.forEach(it => {
       const 缺 = (Number(it.數量)||0) - this._recv(it);
-      if (缺 > 0) moving.push({ 貨號: it.貨號, 數量: 缺, 單價USD: Number(it.單價USD)||0, 他平台: !!it.他平台 });
+      if (缺 > 0) moving.push({ 貨號: it.貨號, 數量: 缺, 單價USD: Number(it.單價USD)||0, 平台711: !!it.平台711, 露天: !!it.露天 });
     });
     if (!moving.length) return alert('這批沒有未到貨的品項。');
     let target, isNew = targetId === '__new__';
@@ -503,8 +505,8 @@ const App = {
     target.品項 = target.品項 || [];
     moving.forEach(m => {                                   // 目標接收：未到貨→到貨數量預設 0（待到貨）；同貨號同單價併數量
       const ex = target.品項.find(x => x.貨號===m.貨號 && (Number(x.單價USD)||0)===m.單價USD);
-      if (ex) { const 舊到 = this._recv(ex); ex.數量 = (Number(ex.數量)||0) + m.數量; ex.到貨數量 = 舊到; if (m.他平台) ex.他平台 = true; }
-      else target.品項.push({ 貨號:m.貨號, 數量:m.數量, 單價USD:m.單價USD, 到貨數量:0, ...(m.他平台?{他平台:true}:{}) });
+      if (ex) { const 舊到 = this._recv(ex); ex.數量 = (Number(ex.數量)||0) + m.數量; ex.到貨數量 = 舊到; if (m.平台711) ex.平台711 = true; if (m.露天) ex.露天 = true; }
+      else target.品項.push({ 貨號:m.貨號, 數量:m.數量, 單價USD:m.單價USD, 到貨數量:0, ...(m.平台711?{平台711:true}:{}), ...(m.露天?{露天:true}:{}) });
     });
     src.品項 = src.品項                                     // 原批：訂購數改為實收數，全未到的移除
       .map(it => { const 到 = this._recv(it); return { ...it, 數量: 到, 到貨數量: 到 }; })
@@ -529,12 +531,13 @@ const App = {
       const 到 = this._recv(it);
       const 缺 = Math.max(0, 訂 - 到);
       return `<tr class="${到<=0?'batch-done':''}">
-        <td><b>${it.貨號}</b></td><td>${p.品名}${到<=0?' <span class="pill wait">未到貨</span>':(缺>0?` <span class="pill wait">缺 ${缺}</span>`:'')} <span class="pill off" data-offpill="${i}" style="${it.他平台?'':'display:none'}">非蝦皮</span></td>
+        <td><b>${it.貨號}</b></td><td>${p.品名}${到<=0?' <span class="pill wait">未到貨</span>':(缺>0?` <span class="pill wait">缺 ${缺}</span>`:'')} <span class="pill p711" data-p711="${i}" style="${it.平台711?'':'display:none'}">711</span> <span class="pill pruten" data-pruten="${i}" style="${it.露天?'':'display:none'}">露天</span></td>
         <td class="num">${訂}</td>
         <td class="num"><input type="number" class="it-recv" data-i="${i}" value="${到}" min="0" max="${訂}" style="width:56px;text-align:right"></td>
         <td class="num">$${單價.toFixed(2)}</td>
         <td class="num">$${(單價*到).toFixed(2)}</td>
-        <td class="num"><input type="checkbox" class="it-off" data-i="${i}" ${it.他平台?'checked':''} title="勾選＝這件走 7-11 賣貨便／露天代購（非蝦皮平台）"></td>
+        <td class="num"><input type="checkbox" class="it-711" data-i="${i}" ${it.平台711?'checked':''} title="勾選＝這件走 7-11 賣貨便"></td>
+        <td class="num"><input type="checkbox" class="it-ruten" data-i="${i}" ${it.露天?'checked':''} title="勾選＝這件走露天代購（Ruten）"></td>
         <td><button class="btn btn-sm btn-danger" data-rm="${i}">移除</button></td></tr>`;
     }).join('');
     document.getElementById('content').innerHTML = `
@@ -570,10 +573,10 @@ const App = {
       </div>
       <div class="card">
         <h2>🧾 批次品項</h2>
-        <div class="muted" style="margin:-6px 0 8px;font-size:13px">「到貨」欄可改成實際收到的數量（未到填 0）；成本、毛利、件數都依實收計算。勾「非蝦皮」＝這件走 7-11 賣貨便／露天代購。</div>
+        <div class="muted" style="margin:-6px 0 8px;font-size:13px">「到貨」欄可改成實際收到的數量（未到填 0）；成本、毛利、件數都依實收計算。勾「711」＝走 7-11 賣貨便，勾「露天」＝走露天代購（Ruten）。</div>
         <div class="table-wrap"><table>
-          <thead><tr><th>貨號</th><th>品名</th><th class="num">訂購</th><th class="num">到貨</th><th class="num">單價USD</th><th class="num">小計USD</th><th class="num" title="7-11 賣貨便／露天代購（非蝦皮平台）">非蝦皮</th><th></th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="8" class="empty">尚無品項</td></tr>`}</tbody>
+          <thead><tr><th>貨號</th><th>品名</th><th class="num">訂購</th><th class="num">到貨</th><th class="num">單價USD</th><th class="num">小計USD</th><th class="num" title="7-11 賣貨便">711</th><th class="num" title="露天代購 Ruten">露天</th><th></th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="9" class="empty">尚無品項</td></tr>`}</tbody>
         </table></div>
       </div>
       ${t.缺件>0 ? `<div class="card">
@@ -609,11 +612,18 @@ const App = {
         let v = Math.floor(Number(inp.value)||0); if (v<0) v=0; if (v>ord) v=ord;
         batch.品項[i].到貨數量 = v; DB.存採購(list); this.batchDetail(id);
       }));
-    document.querySelectorAll('.it-off').forEach(cb =>           // 標記「非蝦皮平台（711賣貨便／露天代購）」
+    document.querySelectorAll('.it-711').forEach(cb =>          // 標記「7-11 賣貨便」
       cb.addEventListener('change', () => {
         const i = +cb.dataset.i;
-        batch.品項[i].他平台 = cb.checked; DB.存採購(list);        // 只存標記，不重繪（保住捲動位置）
-        const pill = document.querySelector(`[data-offpill="${i}"]`);
+        batch.品項[i].平台711 = cb.checked; DB.存採購(list);      // 只存標記，不重繪（保住捲動位置）
+        const pill = document.querySelector(`[data-p711="${i}"]`);
+        if (pill) pill.style.display = cb.checked ? '' : 'none';
+      }));
+    document.querySelectorAll('.it-ruten').forEach(cb =>        // 標記「露天代購（Ruten）」
+      cb.addEventListener('change', () => {
+        const i = +cb.dataset.i;
+        batch.品項[i].露天 = cb.checked; DB.存採購(list);
+        const pill = document.querySelector(`[data-pruten="${i}"]`);
         if (pill) pill.style.display = cb.checked ? '' : 'none';
       }));
     const mvGo = document.getElementById('mv-go');               // 搬移未到貨品項到其他批次
