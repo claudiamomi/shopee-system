@@ -529,7 +529,7 @@ const App = {
       const 到 = this._recv(it);
       const 缺 = Math.max(0, 訂 - 到);
       return `<tr class="${到<=0?'batch-done':''}">
-        <td><b>${it.貨號}</b></td><td>${p.品名}${到<=0?' <span class="pill wait">未到貨</span>':(缺>0?` <span class="pill wait">缺 ${缺}</span>`:''} <span class="pill off" data-offpill="${i}" style="${it.他平台?'':'display:none'}">非蝦皮</span></td>
+        <td><b>${it.貨號}</b></td><td>${p.品名}${到<=0?' <span class="pill wait">未到貨</span>':(缺>0?` <span class="pill wait">缺 ${缺}</span>`:'')} <span class="pill off" data-offpill="${i}" style="${it.他平台?'':'display:none'}">非蝦皮</span></td>
         <td class="num">${訂}</td>
         <td class="num"><input type="number" class="it-recv" data-i="${i}" value="${到}" min="0" max="${訂}" style="width:56px;text-align:right"></td>
         <td class="num">$${單價.toFixed(2)}</td>
