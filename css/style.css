@@ -178,6 +178,7 @@ td.pname { white-space: normal; word-break: break-word; min-width: 220px; line-h
 .pill.done { background: #eceff1; color: #607d8b; }
 .pill.wait { background: #fff4e5; color: #e67700; }
 .pill.ship { background: #e7f0fe; color: #1c6dd0; }
+.pill.off { background: #f3e8fd; color: #7b2ff7; }
 tr.section-head td { background: #eef1f5; font-weight: 700; font-size: 14px; color: var(--ink); padding: 11px 12px; border-top: 2px solid var(--line); }
 select.b-status { font-size: 12px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
 
