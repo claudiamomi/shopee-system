@@ -1,5 +1,5 @@
 /* ============================================================
- * app.js — 介面與路由（毛利試算機 / 商品成本表 / 賣場設定）
+ * app.js — 介面與路由（毛利試算機 / 採購批次 / 客服訂單 / 商品成本表 / 賣場設定）
  * ============================================================ */
 
 const App = {
@@ -104,6 +104,7 @@ const App = {
     const el = document.getElementById('content');
     if (view === 'calc') el.innerHTML = this.renderCalc(), this.afterCalc();
     else if (view === 'purchases') el.innerHTML = this.renderPurchases(), this.afterPurchases();
+    else if (view === 'orders') el.innerHTML = this.renderOrders(), this.afterOrders();
     else if (view === 'products') el.innerHTML = this.renderProducts(), this.afterProducts();
     else if (view === 'stores') el.innerHTML = this.renderStores(), this.afterStores();
     else if (view === 'data') el.innerHTML = this.renderData(), this.afterData();
@@ -894,6 +895,264 @@ const App = {
     DB.存待確認(DB.取待確認().filter(x => x.id !== id));
     alert(`已匯入「${batch.名稱}」：${品項.length} 項。主檔已同步更新進貨單價。`);
     this.batchDetail(batch.id);
+  },
+
+  /* ================= 客服訂單（LINE@ 溝通 → 7-11 賣貨便取貨付款寄出）================= */
+  // 收件人資料由賣貨便管理，這裡只記：客人（LINE 暱稱）、品項、成交價、出貨進度、毛利。
+  // 毛利套「711賣貨便」賣場參數（簡易：手續費率＋固定費，可在賣場設定改），再扣賣家負擔運費。
+  訂單狀態序: ['待到貨', '可出貨', '已寄出', '已完成'],
+  訂單區標: { '待到貨': '⏳ 預購待到貨', '可出貨': '📦 已到貨・可出貨', '已寄出': '🚚 已寄出・等取貨付款', '已完成': '✅ 已取貨收款' },
+  訂單狀態樣式: { '待到貨': 'wait', '可出貨': 'p711', '已寄出': 'ship', '已完成': 'done' },
+  _esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); },
+  _ordStore() { return DB.取賣場()['711賣貨便'] || { 類型: '簡易', 手續費率: 0, 固定費: 0 }; },
+  _ordCollapsed() {
+    try { return JSON.parse(localStorage.getItem('shopee_ord_collapsed')) || { '已完成': true }; }
+    catch (e) { return { '已完成': true }; }
+  },
+  _setOrdCollapsed(m) { try { localStorage.setItem('shopee_ord_collapsed', JSON.stringify(m)); } catch (e) {} },
+
+  // 一張訂單的金額／成本／毛利（成本用主檔進貨成本＋空運）
+  orderTotals(o) {
+    const prods = DB.取商品();
+    const store = this._ordStore();
+    const 明細 = (o.品項 || []).map(it => ({
+      商品: prods.find(p => p.貨號 === it.貨號) || { 進貨USD: 0, 重量lb: 0 },
+      售價: Number(it.單價) || 0, 數量: Number(it.數量) || 0,
+    }));
+    const r = 算訂單(明細, store, {});
+    const 運費 = Number(o.運費) || 0;
+    const 件數 = 明細.reduce((a, d) => a + d.數量, 0);
+    return { 金額: r.總售價, 成本: r.總成本, 手續費: r.總手續費 + r.固定費, 運費, 毛利: r.訂單毛利 - 運費, 件數, 列: r.列 };
+  },
+
+  renderOrders() {
+    const list = DB.取訂單();
+    const collapsed = this._ordCollapsed();
+    const prods = DB.取商品();
+    const nameOf = h => { const p = prods.find(x => x.貨號 === h); return p ? p.品名 : h; };
+    const groups = {}; this.訂單狀態序.forEach(s => groups[s] = []);
+    list.forEach(o => (groups[o.狀態] || groups['待到貨']).push(o));
+    Object.values(groups).forEach(g => g.sort((a, b) => (b.日期 || '').localeCompare(a.日期 || '')));
+
+    // KPI：待到貨件數、可出貨單數、已寄出待收款、本月已收款毛利
+    const tot = {}; list.forEach(o => tot[o.id] = this.orderTotals(o));
+    const sum = (g, k) => g.reduce((a, o) => a + tot[o.id][k], 0);
+    const ym = new Date().toISOString().slice(0, 7);
+    const 本月 = groups['已完成'].filter(o => (o.完成日 || o.日期 || '').slice(0, 7) === ym);
+
+    // 預購欠貨統計：待到貨訂單的品項加總 vs 採購中（待處理・已集貨）已訂件數
+    const 欠 = {};
+    groups['待到貨'].forEach(o => (o.品項 || []).forEach(it => {
+      const e = 欠[it.貨號] || (欠[it.貨號] = { 件: 0, 客: [] });
+      e.件 += Number(it.數量) || 0; if (e.客.indexOf(o.客人) < 0) e.客.push(o.客人);
+    }));
+    const 採購中 = {};
+    DB.取採購().filter(b => { const s = this._st(b); return s === '待處理' || s === '已集貨'; })
+      .forEach(b => (b.品項 || []).forEach(it => 採購中[it.貨號] = (採購中[it.貨號] || 0) + (Number(it.數量) || 0)));
+    const 欠rows = Object.keys(欠).sort().map(h => {
+      const 已訂 = 採購中[h] || 0, 差 = 欠[h].件 - 已訂;
+      return `<tr><td><b>${h}</b>｜${this._esc(nameOf(h))}<br><span class="muted" style="font-size:12px">${欠[h].客.map(c => this._esc(c)).join('、')}</span></td>
+        <td class="num">${欠[h].件}</td><td class="num">${已訂 || '<span class="muted">0</span>'}</td>
+        <td class="num">${差 > 0 ? `<b class="bad">還差 ${差}</b>` : '<span class="good">✓ 夠</span>'}</td></tr>`;
+    }).join('');
+
+    const rowOf = o => {
+      const t = tot[o.id], s = o.狀態 || '待到貨';
+      const 品 = (o.品項 || []).map(it => `${this._esc(nameOf(it.貨號))} ×${it.數量}`).join('<br>') || '<span class="muted">（尚無品項）</span>';
+      const sel = `<select class="o-status" data-id="${o.id}">${this.訂單狀態序.map(x => `<option value="${x}" ${x === s ? 'selected' : ''}>${this.訂單區標[x]}</option>`).join('')}</select>`;
+      return `<tr data-osecrow="${s}"${collapsed[s] ? ' hidden' : ''}>
+        <td><b>${this._esc(o.客人)}</b><br><span class="muted" style="font-size:11.5px">📅 ${o.日期 || ''}</span>${o.備註 ? `<br><span class="muted" style="font-size:11.5px">📝 ${this._esc(o.備註)}</span>` : ''}</td>
+        <td style="font-size:13px">${品}</td>
+        <td class="num">${錢(t.金額)}</td>
+        <td class="num ${t.毛利 >= 0 ? 'good' : 'bad'}">${錢(t.毛利)}</td>
+        <td><div class="row-actions">${sel}
+          <button class="btn btn-sm" data-oopen="${o.id}">明細</button>
+          <button class="btn btn-sm btn-danger" data-odel="${o.id}">刪</button></div></td></tr>`;
+    };
+    const rows = this.訂單狀態序.map(s => {
+      const g = groups[s], isC = !!collapsed[s];
+      return `<tr class="section-head" data-osec="${s}" style="cursor:pointer" title="點一下收合／展開">
+          <td colspan="5"><span class="sec-caret">${isC ? '▸' : '▾'}</span> ${this.訂單區標[s]}　<span class="muted">（${g.length}）${isC ? '・已收合，點此展開' : ''}</span></td></tr>`
+        + (g.length ? g.map(rowOf).join('')
+          : `<tr data-osecrow="${s}"${isC ? ' hidden' : ''}><td colspan="5" class="empty" style="padding:12px">— 此區目前沒有訂單 —</td></tr>`);
+    }).join('');
+
+    return `
+      <div class="page-head"><h1>客服訂單</h1>
+        <p>LINE@ 談好的訂單記在這裡（7-11 賣貨便取貨付款寄出，收件資料在賣貨便，這裡不用記）。毛利套「7-11 賣貨便」賣場設定。</p></div>
+      <div class="kpis">
+        <div class="kpi"><div class="label">⏳ 預購待到貨</div><div class="value">${sum(groups['待到貨'], '件數')} 件</div><div class="sub">${groups['待到貨'].length} 張訂單</div></div>
+        <div class="kpi"><div class="label">📦 可出貨</div><div class="value">${groups['可出貨'].length} 張</div><div class="sub">到貨了，記得通知客人並寄出</div></div>
+        <div class="kpi"><div class="label">🚚 寄出待收款</div><div class="value">${錢(sum(groups['已寄出'], '金額'))}</div><div class="sub">${groups['已寄出'].length} 張等取貨付款</div></div>
+        <div class="kpi"><div class="label">✅ 本月已收款毛利</div><div class="value good">${錢(sum(本月, '毛利'))}</div><div class="sub">營收 ${錢(sum(本月, '金額'))}・${本月.length} 張</div></div>
+      </div>
+      ${欠rows ? `<div class="card" style="margin-top:16px">
+        <h2>📋 預購欠貨統計</h2>
+        <div class="muted" style="margin:-6px 0 8px">「待到貨」訂單要給客人的件數，對照採購批次（待處理・已集貨）已訂的件數。</div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>商品／等貨客人</th><th class="num">客人預訂</th><th class="num">採購中已訂</th><th class="num">狀況</th></tr></thead>
+          <tbody>${欠rows}</tbody></table></div></div>` : ''}
+      <div class="card" style="margin-top:16px">
+        <div class="toolbar"><div class="spacer"></div><button class="btn btn-primary" id="o-add">➕ 新增訂單</button></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>客人</th><th>品項</th><th class="num">金額</th><th class="num">毛利</th><th></th></tr></thead>
+          <tbody>${rows}</tbody></table></div>
+      </div>`;
+  },
+
+  afterOrders() {
+    document.getElementById('o-add').addEventListener('click', () => this.editOrder(null));
+    document.querySelectorAll('[data-oopen]').forEach(b => b.addEventListener('click', () => this.orderDetail(b.dataset.oopen)));
+    document.querySelectorAll('[data-odel]').forEach(b => b.addEventListener('click', () => {
+      if (!confirm('確定刪除這張訂單？')) return;
+      DB.存訂單(DB.取訂單().filter(x => x.id !== b.dataset.odel)); this.go('orders');
+    }));
+    document.querySelectorAll('.o-status').forEach(sel => sel.addEventListener('change', () => {
+      const l = DB.取訂單(), o = l.find(x => x.id === sel.dataset.id);
+      if (o) { this._setOrderStatus(o, sel.value); DB.存訂單(l); this.go('orders'); }
+    }));
+    document.querySelectorAll('#content tr.section-head[data-osec]').forEach(h => h.addEventListener('click', () => {
+      const m = this._ordCollapsed(); m[h.dataset.osec] = !m[h.dataset.osec]; this._setOrdCollapsed(m); this.go('orders');
+    }));
+  },
+
+  _setOrderStatus(o, s) {
+    o.狀態 = s;
+    if (s === '已完成') { if (!o.完成日) o.完成日 = new Date().toISOString().slice(0, 10); }   // 本月收款統計用
+    else delete o.完成日;
+  },
+
+  // 新增／編輯訂單抬頭（客人、日期、運費、備註）
+  editOrder(id) {
+    const list = DB.取訂單();
+    const o = id ? list.find(x => x.id === id)
+      : { id: 'o' + Date.now(), 客人: '', 日期: new Date().toISOString().slice(0, 10), 狀態: '待到貨', 運費: 0, 備註: '', 品項: [] };
+    const 客人們 = [...new Set(list.map(x => x.客人).filter(Boolean))];
+    document.getElementById('content').innerHTML = `
+      <div class="page-head"><h1>${id ? '編輯訂單' : '新增客服訂單'}</h1></div>
+      <div class="card" style="max-width:560px">
+        <div class="field"><label>客人（LINE 暱稱）</label><input id="no-客人" list="no-custlist" value="${this._esc(o.客人)}" placeholder="例：張鬍鬚/阿水" autocomplete="off">
+          <datalist id="no-custlist">${客人們.map(c => `<option value="${this._esc(c)}">`).join('')}</datalist></div>
+        <div class="field"><label>成立日期</label><input id="no-日期" type="date" value="${o.日期 || ''}"></div>
+        <div class="field"><label>狀態</label><select id="no-狀態">${this.訂單狀態序.map(x => `<option value="${x}" ${x === o.狀態 ? 'selected' : ''}>${this.訂單區標[x]}</option>`).join('')}</select></div>
+        <div class="field"><label>賣家負擔運費（沒有填 0）</label><input id="no-運費" type="number" min="0" value="${Number(o.運費) || 0}"></div>
+        <div class="field"><label>備註（選填）</label><input id="no-備註" value="${this._esc(o.備註)}" placeholder="例：出貨後請通知"></div>
+        <div class="toolbar" style="margin-top:8px">
+          <button class="btn btn-primary" id="no-save">${id ? '儲存' : '下一步：加品項 →'}</button>
+          <button class="btn" id="no-cancel">取消</button></div>
+      </div>`;
+    document.getElementById('no-cancel').addEventListener('click', () => id ? this.orderDetail(id) : this.go('orders'));
+    document.getElementById('no-save').addEventListener('click', () => {
+      const v = k => document.getElementById('no-' + k).value;
+      const obj = { ...o, 客人: v('客人').trim(), 日期: v('日期'), 運費: Number(v('運費')) || 0, 備註: v('備註').trim() };
+      if (!obj.客人) return alert('請填客人（LINE 暱稱）');
+      this._setOrderStatus(obj, v('狀態'));
+      if (id) list[list.findIndex(x => x.id === id)] = obj; else list.push(obj);
+      DB.存訂單(list); this.orderDetail(obj.id);
+    });
+  },
+
+  // 訂單明細：加品項（搜尋商品＋數量＋成交價）、看毛利、切狀態
+  orderDetail(id) {
+    const list = DB.取訂單();
+    const o = list.find(x => x.id === id);
+    if (!o) return this.go('orders');
+    o.品項 = o.品項 || [];
+    const prods = DB.取商品();
+    const t = this.orderTotals(o);
+    const rows = o.品項.map((it, i) => {
+      const p = prods.find(x => x.貨號 === it.貨號) || { 品名: '（主檔找不到）' };
+      const r = t.列[i];
+      return `<tr><td><b>${it.貨號}</b>｜${p.品牌 ? `<span class="brandtag">${this._esc(p.品牌)}</span> ` : ''}${this._esc(p.品名)}${!(Number(p.進貨USD) > 0) ? ' <span class="pill wait">無成本</span>' : ''}</td>
+        <td class="num">${it.數量}</td><td class="num">${錢(it.單價)}</td><td class="num">${錢(r.件售價)}</td>
+        <td class="num">${錢(r.件成本)}</td><td class="num ${r.件毛利 >= 0 ? 'good' : 'bad'}"><b>${錢(r.件毛利)}</b></td>
+        <td><button class="btn btn-sm btn-danger" data-orm="${i}">刪</button></td></tr>`;
+    }).join('');
+    document.getElementById('content').innerHTML = `
+      <div class="page-head"><h1>💬 ${this._esc(o.客人)}</h1>
+        <p>📅 ${o.日期 || ''}　${o.備註 ? '📝 ' + this._esc(o.備註) + '　' : ''}<button class="btn btn-sm" id="o-edit">✏️ 編輯客人／日期／運費</button></p></div>
+      <div class="kpis">
+        <div class="kpi"><div class="label">取貨付款金額</div><div class="value">${錢(t.金額)}</div><div class="sub">${t.件數} 件</div></div>
+        <div class="kpi"><div class="label">成本</div><div class="value">${錢(t.成本)}</div><div class="sub">進貨＋空運</div></div>
+        <div class="kpi"><div class="label">手續費＋運費</div><div class="value">${錢(t.手續費 + t.運費)}</div><div class="sub">賣貨便 ${錢(t.手續費)}・運費 ${錢(t.運費)}</div></div>
+        <div class="kpi"><div class="label">訂單毛利</div><div class="value ${t.毛利 >= 0 ? 'good' : 'bad'}">${錢(t.毛利)}</div></div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h2>➕ 加入品項</h2>
+        <div class="grid grid-3">
+          <div class="field" style="position:relative"><label>商品（打貨號或品名搜尋）</label>
+            <input id="oi-search" type="text" placeholder="例：LE005 或 NAC" autocomplete="off">
+            <input type="hidden" id="oi-prod"><div id="oi-results" class="combo-results"></div></div>
+          <div class="field"><label>數量</label><input id="oi-qty" type="number" min="1" value="1"></div>
+          <div class="field"><label>成交單價（可打算式，如 1390*0.95）</label><input id="oi-price" type="text" inputmode="decimal" placeholder="選商品後自動帶售價"></div>
+        </div>
+        <button class="btn btn-primary" id="oi-add">加入</button>
+      </div>
+      <div class="card">
+        <h2>🧾 訂單品項</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>商品</th><th class="num">數量</th><th class="num">單價</th><th class="num">小計</th><th class="num">成本</th><th class="num">毛利</th><th></th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="7" class="empty">尚無品項</td></tr>'}</tbody></table></div>
+      </div>
+      <div class="toolbar"><button class="btn" id="o-back">← 回訂單列表</button><div class="spacer"></div>
+        <span class="muted" style="margin-right:6px">狀態：</span>
+        ${this.訂單狀態序.map(x => `<button class="btn btn-sm ${o.狀態 === x ? 'btn-primary' : ''}" data-osetst="${x}">${this.訂單區標[x]}</button>`).join('')}
+      </div>`;
+
+    document.getElementById('o-back').addEventListener('click', () => this.go('orders'));
+    document.getElementById('o-edit').addEventListener('click', () => this.editOrder(id));
+    document.querySelectorAll('[data-osetst]').forEach(b => b.addEventListener('click', () => {
+      this._setOrderStatus(o, b.dataset.osetst); DB.存訂單(list); this.orderDetail(id);
+    }));
+    document.querySelectorAll('[data-orm]').forEach(b => b.addEventListener('click', () => {
+      o.品項.splice(+b.dataset.orm, 1); DB.存訂單(list); this.orderDetail(id);
+    }));
+
+    // 商品搜尋（同採購明細的操作方式：打字篩選、↑↓ Enter 選）
+    const sIn = document.getElementById('oi-search'), hid = document.getElementById('oi-prod');
+    const res = document.getElementById('oi-results'), priceIn = document.getElementById('oi-price');
+    let act = -1;
+    const items = () => [...res.querySelectorAll('.combo-item[data-code]')];
+    const choose = el => {
+      hid.value = el.dataset.code; sIn.value = el.dataset.code + '｜' + el.dataset.name;
+      res.style.display = 'none'; act = -1;
+      const p = prods.find(x => x.貨號 === el.dataset.code);
+      if (p && Number(p.售價) > 0) priceIn.value = p.售價;                 // 預設帶主檔售價，可再改
+    };
+    const setAct = i => { const els = items(); if (!els.length) return; act = (i + els.length) % els.length;
+      els.forEach((el, k) => el.classList.toggle('active', k === act)); els[act].scrollIntoView({ block: 'nearest' }); };
+    const draw = () => {
+      const kw = sIn.value.trim().toLowerCase();
+      if (!kw) { res.style.display = 'none'; res.innerHTML = ''; act = -1; return; }
+      const hit = prods.filter(p => ((p.貨號 || '') + ' ' + (p.品牌 || '') + ' ' + (p.品名 || '') + ' ' + (p.別名 || []).join(' ')).toLowerCase().includes(kw)).slice(0, 40);
+      res.innerHTML = hit.length ? hit.map(p => `<div class="combo-item" data-code="${p.貨號}" data-name="${this._esc(p.品名)}"><b>${p.貨號}</b>｜${p.品牌 ? '<span class="brandtag">' + this._esc(p.品牌) + '</span> ' : ''}${this._esc(p.品名)}${Number(p.售價) > 0 ? ' <span class="muted">' + 錢(p.售價) + '</span>' : ''}</div>`).join('')
+        : '<div class="combo-item muted">找不到符合的商品</div>';
+      res.style.display = 'block'; act = -1;
+      items().forEach(el => el.addEventListener('click', () => choose(el)));
+    };
+    sIn.addEventListener('input', () => { hid.value = ''; draw(); });
+    sIn.addEventListener('focus', draw);
+    sIn.addEventListener('keydown', e => {
+      const vis = res.style.display !== 'none';
+      if (e.key === 'ArrowDown') { if (!vis) draw(); setAct(act + 1); e.preventDefault(); }
+      else if (e.key === 'ArrowUp') { if (!vis) draw(); setAct(act < 0 ? items().length - 1 : act - 1); e.preventDefault(); }
+      else if (e.key === 'Enter') { const els = items(); if (vis && act >= 0 && els[act]) { choose(els[act]); e.preventDefault(); } }
+      else if (e.key === 'Escape') res.style.display = 'none';
+    });
+    document.addEventListener('click', e => { if (e.target !== sIn && !e.target.closest('#oi-results')) res.style.display = 'none'; });
+
+    document.getElementById('oi-add').addEventListener('click', () => {
+      let 貨號 = hid.value;
+      if (!貨號) { const v = sIn.value.trim(); const hit = prods.find(p => (p.貨號 || '').toLowerCase() === (v.split('｜')[0] || '').trim().toLowerCase()); if (hit) 貨號 = hit.貨號; }
+      if (!貨號) { alert('請從搜尋結果點選商品'); sIn.focus(); return; }
+      const 數量 = Math.max(1, Math.floor(+document.getElementById('oi-qty').value || 1));
+      const raw = priceIn.value.replace(/[×xX]/g, '*').replace(/[,，\s]/g, '');
+      if (!/^[\d.+\-*/()]+$/.test(raw)) { alert('請輸入成交單價（數字，或像 1390*0.95 的算式）'); priceIn.focus(); return; }
+      let 單價; try { 單價 = Math.floor(Function('return (' + raw + ')')() + 1e-6); } catch (e) { 單價 = NaN; }   // 小數無條件捨去（1390*0.95 → 1320）
+      if (!(單價 > 0)) { alert('成交單價算不出來，請再確認'); priceIn.focus(); return; }
+      o.品項.push({ 貨號, 數量, 單價 });
+      DB.存訂單(list); this.orderDetail(id);
+    });
   },
 
   /* ================= 商品成本表 ================= */

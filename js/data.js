@@ -101,7 +101,7 @@ const DB = {
   _write(state) { localStorage.setItem(this.KEY, JSON.stringify(state)); },
 
   // 主資料（不含待確認）＝雲端 A1 儲存的內容
-  _mainData() { const s = this.init(); return { 商品: s.商品, 賣場: s.賣場, 活動日: s.活動日, 採購: s.採購, 匯率: s.匯率, 空運費_每磅: s.空運費_每磅 }; },
+  _mainData() { const s = this.init(); return { 商品: s.商品, 賣場: s.賣場, 活動日: s.活動日, 採購: s.採購, 訂單: s.訂單 || [], 匯率: s.匯率, 空運費_每磅: s.空運費_每磅 }; },
   // 雲端拉下來時：覆蓋主資料，但保留本機待確認交由 _setPendingLocal 處理
   _overwriteMain(data) {
     const s = this.init();
@@ -109,6 +109,7 @@ const DB = {
     if (data.賣場) s.賣場 = data.賣場;
     if (data.活動日) s.活動日 = data.活動日;
     if (data.採購) s.採購 = data.採購;
+    if (data.訂單) s.訂單 = data.訂單;
     if (typeof data.匯率 === 'number') s.匯率 = data.匯率;
     if (typeof data.空運費_每磅 === 'number') s.空運費_每磅 = data.空運費_每磅;
     this._normalize(s); // 雲端來的舊資料補上 711／類型／品牌／匯率等新欄位
@@ -117,7 +118,7 @@ const DB = {
   },
   _setPendingLocal(list) { const s = this.init(); s.待確認 = list || []; this._write(s); },
   // 某一段資料變動後推雲端（只推這一段，Cloud 會先抓雲端最新、只覆蓋這段，避免蓋掉別段）
-  // section: '商品' | '賣場' | '活動日' | '採購' | 'params'
+  // section: '商品' | '賣場' | '活動日' | '採購' | '訂單' | 'params'
   _push(section, value) { if (typeof Cloud !== 'undefined') Cloud.scheduleOut(section, value); },
 
   // 初始化：首次使用（或示範資料版本過舊）灌入預設值
@@ -162,6 +163,7 @@ const DB = {
       if (!p.別名) { p.別名 = []; changed = true; }
     });
     if (!s.待確認) { s.待確認 = []; changed = true; }
+    if (!Array.isArray(s.訂單)) { s.訂單 = []; changed = true; }                              // 客服訂單（LINE@）
     if (typeof s.匯率 !== 'number') { s.匯率 = 參數預設.匯率; changed = true; }            // 舊資料補匯率
     if (typeof s.空運費_每磅 !== 'number') { s.空運費_每磅 = 參數預設.空運費_每磅; changed = true; }
     return changed;
@@ -189,6 +191,10 @@ const DB = {
   取採購() { const s = this.init(); return s.採購 || (s.採購 = JSON.parse(JSON.stringify(採購種子)), this._write(s), s.採購); },
   存採購(list) { const s = this.init(); s.採購 = list; this._write(s); this._push('採購', list); },
 
+  // 客服訂單（LINE@ 溝通、7-11 賣貨便取貨付款寄出）
+  取訂單() { const s = this.init(); return s.訂單 || (s.訂單 = [], this._write(s), s.訂單); },
+  存訂單(list) { const s = this.init(); s.訂單 = list; this._write(s); this._push('訂單', list); },
+
   取待確認() { const s = this.init(); return s.待確認 || (s.待確認 = [], this._write(s), s.待確認); },
   存待確認(list) { const s = this.init(); s.待確認 = list; this._write(s); if (typeof Cloud !== 'undefined') Cloud.setPending(list); },
 
@@ -198,6 +204,7 @@ const DB = {
     const s = this.init();
     if ((s.商品 || []).length !== 商品種子.length) return true;
     if ((s.採購 || []).length !== 採購種子.length) return true;
+    if ((s.訂單 || []).length) return true;
     return false;
   },
 
@@ -256,7 +263,7 @@ const Cloud = {
   },
 
   // 分段上傳（防抖）：只記錄「這次改動的段」，flush 時才抓雲端最新、疊上改動段再存回。
-  // section: '商品' | '賣場' | '活動日' | '採購' | 'params'
+  // section: '商品' | '賣場' | '活動日' | '採購' | '訂單' | 'params'
   scheduleOut(section, value) {
     if (!this.enabled()) return;
     this._pending = this._pending || {};
@@ -310,6 +317,7 @@ const Cloud = {
       if (pend.賣場) d.賣場 = pend.賣場;
       if (pend.活動日) d.活動日 = pend.活動日;
       if (pend.採購) d.採購 = pend.採購;
+      if (pend.訂單) d.訂單 = pend.訂單;
       if (pend.params) { d.匯率 = pend.params.匯率; d.空運費_每磅 = pend.params.空運費_每磅; }
       await this._post('saveData', d);
     } catch (e) {
