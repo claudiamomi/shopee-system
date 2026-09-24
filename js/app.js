@@ -978,8 +978,7 @@ const App = {
     }).join('');
 
     return `
-      <div class="page-head"><h1>客服訂單</h1>
-        <p>LINE@ 談好的訂單記在這裡（7-11 賣貨便取貨付款寄出，收件資料在賣貨便，這裡不用記）。毛利套「7-11 賣貨便」賣場設定。</p></div>
+      <div class="page-head"><h1>客服訂單</h1></div>
       <div class="kpis">
         <div class="kpi"><div class="label">⏳ 預購待到貨</div><div class="value">${sum(groups['待到貨'], '件數')} 件</div><div class="sub">${groups['待到貨'].length} 張訂單</div></div>
         <div class="kpi"><div class="label">📦 可出貨</div><div class="value">${groups['可出貨'].length} 張</div><div class="sub">到貨了，記得通知客人並寄出</div></div>
