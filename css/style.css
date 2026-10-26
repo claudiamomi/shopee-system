@@ -105,6 +105,8 @@ body {
 
 .field { margin-bottom: 14px; }
 .field label { display: block; font-size: 13px; font-weight: 600; color: var(--ink-soft); margin-bottom: 6px; }
+.field label.chk { display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 10px; }
+.field label.chk input { width: auto; flex: none; margin: 0; }
 input, select {
   width: 100%; padding: 10px 12px; font-size: 15px;
   border: 1px solid var(--line); border-radius: 9px; background: #fff; color: var(--ink);

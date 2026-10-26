@@ -134,8 +134,8 @@ const App = {
       <div class="grid grid-4">
         <div class="field"><label>數量</label><input id="k-qty" type="number" min="1" value="1"></div>
         <div class="field"><label>訂單成立日（選填，判斷活動日 +2%）</label><input id="k-date" type="date"></div>
-        <div class="field" style="align-self:end"><label><input id="k-pre" type="checkbox" checked> 預購（加收超長備貨 3%）</label></div>
-        <div class="field" style="align-self:end"><label><input id="k-fix" type="checkbox" checked> 計入每單固定費（CC $60）</label></div>
+        <div class="field" style="align-self:end"><label class="chk"><input id="k-pre" type="checkbox" checked> 預購（加收超長備貨 3%）</label></div>
+        <div class="field" style="align-self:end"><label class="chk"><input id="k-fix" type="checkbox" checked> 計入每單固定費（CC $60）</label></div>
       </div>
       <div id="k-result" style="margin-top:12px"></div>
     </div>
