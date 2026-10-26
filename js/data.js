@@ -117,6 +117,16 @@ const DB = {
     this._write(s);
   },
   _setPendingLocal(list) { const s = this.init(); s.待確認 = list || []; this._write(s); },
+  // 剔除待確認裡「訂單號已出現在某採購批次『來源』欄」的項目（確認匯入時來源欄會帶 Order#）
+  _dropImported(list) {
+    const srcs = (this.init().採購 || []).map(b => String(b.來源 || ''));
+    return (list || []).filter(p => {
+      const o = String(p.Order || '').trim();
+      if (o.length < 4) return true;
+      const re = new RegExp('(^|[^A-Za-z0-9])' + o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^A-Za-z0-9])');
+      return !srcs.some(s => re.test(s));
+    });
+  },
   // 某一段資料變動後推雲端（只推這一段，Cloud 會先抓雲端最新、只覆蓋這段，避免蓋掉別段）
   // section: '商品' | '賣場' | '活動日' | '採購' | '訂單' | 'params'
   _push(section, value) { if (typeof Cloud !== 'undefined') Cloud.scheduleOut(section, value); },
@@ -251,7 +261,9 @@ const Cloud = {
             await this._post('saveData', DB._mainData());    // 雲端空、但本機是真實資料 → 初始化上傳
           }
           // ⚠️ 雲端空且本機只是預設種子 → 什麼都不做（不拿種子去初始化，避免假初始化）
-          DB._setPendingLocal(j.pending || []);              // 待確認以雲端為準
+          const 待確認 = DB._dropImported(j.pending || []);   // 待確認以雲端為準，但剔除「訂單號已在採購批次裡」的殘留（已確認過又被機器人重讀）
+          DB._setPendingLocal(待確認);
+          if (待確認.length !== (j.pending || []).length) this.setPending(待確認); // 順手清掉雲端的殘留
           this.status = 'ok';
           this.synced = true;                                // ✅ 這台已與雲端對齊，之後才准推雲端
           return;
