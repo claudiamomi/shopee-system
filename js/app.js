@@ -121,6 +121,26 @@ const App = {
       <p>選商品、賣場、售價，系統依規格自動算手續費與毛利。可加多筆湊成一張訂單（CC 每筆訂單會扣一次 $60 固定費）。</p></div>
 
     <div class="card">
+      <h2>🛍️ 客製代購試算（客人指定、主檔沒有的商品）</h2>
+      <p class="muted" style="margin-top:0">輸入代購金額、重量、想賺的利潤，系統反推要報給客人的售價，並列出所有手續費總額。匯率 ${SPEC.匯率}、空運費每磅 NT$${SPEC.空運費_每磅}（可在「賣場設定」改）。</p>
+      <div class="grid grid-4">
+        <div class="field"><label>賣場</label><select id="k-store">${opts}</select></div>
+        <div class="field"><label>代購金額（每件）</label>
+          <div style="display:flex;gap:6px"><input id="k-amt" type="number" min="0" step="0.01" placeholder="例：25.99">
+          <select id="k-cur" style="width:90px"><option value="USD">USD</option><option value="NTD">NT$</option></select></div></div>
+        <div class="field"><label>重量（磅 lb，每件）</label><input id="k-wt" type="number" min="0" step="0.01" placeholder="例：0.5"></div>
+        <div class="field"><label>想賺的利潤（NT$，每件）</label><input id="k-profit" type="number" step="1" placeholder="例：150"></div>
+      </div>
+      <div class="grid grid-4">
+        <div class="field"><label>數量</label><input id="k-qty" type="number" min="1" value="1"></div>
+        <div class="field"><label>訂單成立日（選填，判斷活動日 +2%）</label><input id="k-date" type="date"></div>
+        <div class="field" style="align-self:end"><label><input id="k-pre" type="checkbox" checked> 預購（加收超長備貨 3%）</label></div>
+        <div class="field" style="align-self:end"><label><input id="k-fix" type="checkbox" checked> 計入每單固定費（CC $60）</label></div>
+      </div>
+      <div id="k-result" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card">
       <h2>➕ 加入試算品項</h2>
       <div class="grid grid-4">
         <div class="field"><label>賣場</label><select id="c-store">${opts}</select></div>
@@ -151,6 +171,42 @@ const App = {
   },
 
   afterCalc() {
+    const kcalc = () => {
+      const $ = id => document.getElementById(id);
+      const out = $('k-result');
+      const 賣場 = DB.取賣場()[$('k-store').value];
+      const amt = +$('k-amt').value;
+      if (!amt || $('k-profit').value === '') { out.innerHTML = '<span class="muted">輸入代購金額與想賺的利潤後，這裡即時顯示建議售價與手續費…</span>'; return; }
+      const 活 = 是活動日($('k-date').value, DB.取活動日());
+      const r = 算客製({ 賣場參數: 賣場, 金額: amt, 幣別: $('k-cur').value, 重量lb: +$('k-wt').value,
+        利潤: +$('k-profit').value, 數量: +$('k-qty').value, 預購: $('k-pre').checked, 是否活動日: 活, 含固定費: $('k-fix').checked });
+      if (r.錯誤) { out.innerHTML = `<span class="bad">${r.錯誤}</span>`; return; }
+      const cls = r.總毛利 >= 0 ? 'good' : 'bad';
+      const n = r.數量;
+      out.innerHTML = `
+        <div class="kpis">
+          <div class="kpi"><div class="label">建議售價（每件）</div><div class="value">${錢(r.售價)}</div>
+            <div class="sub">${n > 1 ? `×${n} ＝ ${錢(r.總售價)}｜` : ''}${賣場.名稱}${活 ? '｜活動日 +2%' : ''}</div></div>
+          <div class="kpi"><div class="label">手續費總額</div><div class="value">${錢(r.總手續費)}</div>
+            <div class="sub">費率 ${百分(r.費率)}${r.固定費 ? ` ＋ 固定費 ${錢(r.固定費)}` : ''}</div></div>
+          <div class="kpi"><div class="label">成本（每件）</div><div class="value">${錢(r.成本)}</div>
+            <div class="sub">商品 ${錢(r.品價)} ＋ 空運 ${錢(r.空運費)}</div></div>
+          <div class="kpi"><div class="label">實際毛利${n > 1 ? '（合計）' : ''}</div><div class="value ${cls}">${錢(r.總毛利)}</div>
+            <div class="sub">${n > 1 ? `每件 ${錢2(r.每件毛利)}｜` : ''}售價進位到整數元</div></div>
+        </div>
+        <div class="table-wrap" style="margin-top:12px"><table>
+          <thead><tr><th>手續費項目</th><th class="num">費率</th><th class="num">金額</th></tr></thead>
+          <tbody>${r.項目.map(x => `<tr><td>${x.名稱}</td><td class="num">${百分(x.率)}</td><td class="num">${錢2(x.金額)}</td></tr>`).join('')}
+            ${r.固定費 ? `<tr><td>每單固定費</td><td class="num">—</td><td class="num">${錢2(r.固定費)}</td></tr>` : ''}
+            <tr><td><b>手續費合計</b></td><td class="num"><b>${百分(r.費率)}</b></td><td class="num"><b>${錢2(r.總手續費)}</b></td></tr></tbody>
+        </table></div>`;
+    };
+    ['k-store','k-amt','k-cur','k-wt','k-profit','k-qty','k-date','k-pre','k-fix'].forEach(id => {
+      const el = document.getElementById(id);
+      el.addEventListener('input', kcalc); el.addEventListener('change', kcalc);
+    });
+    kcalc();
+
     const fillProds = () => {
       const list = DB.取商品();
       document.getElementById('c-prod').innerHTML =
